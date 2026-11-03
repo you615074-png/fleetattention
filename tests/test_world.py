@@ -775,3 +775,28 @@ def test_a_question_about_an_obstacle_that_has_gone_is_taken_back():
     assert list(episode.questions) == [0] and not episode.queue
     assert episode.robots[0].state == 'incident' and episode.robots[1].state != 'incident'
     assert episode.stats['questions'] == 2
+
+
+def test_when_the_asked_about_obstacle_goes_the_joined_incidents_go_with_the_question():
+    class AskThenJoin(Supervisor):
+        name = 'ask_then_join'
+
+        def decide(self, obs, ctx):
+            return Decision.join(ctx.pending[-1].id) if len(ctx.pending) > 1 else Decision.ask()
+
+    episode = Episode(AskThenJoin(), 0, quiet(robots=3, human_median=10_000, human_spread=0))
+    # The first question keeps the person busy; the second is about A, and B (elsewhere, staying) joins it.
+    for robot, cell, until in zip(episode.robots, [(4, 3), (10, 3), (20, 3)], [10_000, 5, 10_000]):
+        obstacle = Obstacle(robot.id, (cell[0] + 1, cell[1]), 'person', until)
+        episode.obstacles[obstacle.id], episode.obstacle_cells[obstacle.cell] = obstacle, obstacle
+        place(episode, robot, cell)
+        episode._go(robot, (cell[0] + 3, cell[1]), 'drop')
+        episode._raise_obstacle(robot, obstacle)
+        episode._decide_new()
+    assert episode.questions[1].incidents == [1, 2]
+    for _ in range(6):
+        episode.tick()
+    # B's robot raises its obstacle again, which makes a question of its own about it.
+    assert 1 not in episode.questions and episode.stats['withdrawn'] == 1
+    assert not episode.incidents[1].open and not episode.incidents[2].open and episode.incidents[2].question is None
+    assert [i.obs.target for i in episode.incidents.values() if i.open and i.obs.robot == 2] == [(21, 3)]

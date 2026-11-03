@@ -297,7 +297,7 @@ class Episode:
         self.events: list[dict[str, Any]] = []
         self.stats: dict[str, Any] = {
             'questions': 0, 'answered': 0, 'answer_latency': 0, 'recoveries': 0, 'human_busy': 0,
-            'delivered': 0, 'mispicked': 0, 'skipped': 0, 'abandoned': 0, 'replanned': 0, 'spawned_obstacles': 0,
+            'delivered': 0, 'mispicked': 0, 'skipped': 0, 'abandoned': 0, 'replanned': 0, 'withdrawn': 0, 'spawned_obstacles': 0,
             'misses': [], 'incidents': {}, 'decisions': {},
         }
         supervisor.reset(supervisor_seed(seed))
@@ -386,23 +386,30 @@ class Episode:
             for question in list(self.questions.values()):
                 for incident_id in list(question.incidents):
                     incident = self.incidents[incident_id]
-                    if incident.obs.kind == 'obstacle' and incident.data['obstacle'].id in ids:
+                    if incident_id in question.incidents and incident.obs.kind == 'obstacle' \
+                            and incident.data['obstacle'].id in ids:
                         self._withdraw(question, incident)
 
     def _withdraw(self, question: Question, incident: Incident) -> None:
-        """The obstacle a waiting question is about has gone: the fleet takes the incident back from the question
-        (the whole question once nothing is left in it) and the robot moves on. A question the person is already
-        answering stays. The question still counts as asked."""
+        """The obstacle a waiting question is about has gone: the fleet takes the incident back from the question and
+        the robot moves on. When it is the incident the question was asked about, the whole question goes, joined
+        incidents included (their robots raise their obstacles again if those are still there): a joined incident
+        never becomes what the person is asked about. A question the person is already answering stays. A withdrawn
+        question still counts as asked, and simply disappears from the supervisor's pending questions."""
         if self.current is not None and self.current.type == 'question' and self.current.ref == question.id:
             return
-        question.incidents.remove(incident.obs.incident)
+        taken = list(question.incidents) if question.incidents[0] == incident.obs.incident else [incident.obs.incident]
+        for incident_id in taken:
+            question.incidents.remove(incident_id)
+            withdrawn = self.incidents[incident_id]
+            withdrawn.question = None
+            self._close(withdrawn, None)
+            robot = self.robots[withdrawn.obs.robot]
+            robot.state, robot.path = 'moving', []
         if not question.incidents:
             del self.questions[question.id]
             self.queue = deque(j for j in self.queue if not (j.type == 'question' and j.ref == question.id))
-        incident.question = None
-        self._close(incident, None)
-        robot = self.robots[incident.obs.robot]
-        robot.state, robot.path = 'moving', []
+            self.stats['withdrawn'] += 1
 
     def _known_box(self, cell: Cell) -> bool:
         obstacle = self.obstacle_cells.get(cell)
@@ -993,7 +1000,7 @@ class Episode:
                     wrong = incident.correct != 'reroute'
                     if wrong:
                         self._miss('low', by, incident)
-                    self._close(incident, None, 'low' if wrong else None)
+                    self._close(incident, None)
                     self._give_up_pick(robot)
                 else:
                     self._close(incident, None)
@@ -1011,7 +1018,7 @@ class Episode:
                 wrong = incident.correct != 'charge_now'
                 if wrong:
                     self._miss('low', by, incident)
-                self._close(incident, None, 'low' if wrong else None)
+                self._close(incident, None)
                 self._abandon_task(robot)
                 self._go_charge(robot)
         elif kind == 'scan_failure':
@@ -1029,7 +1036,7 @@ class Episode:
                 wrong = incident.correct != 'skip'
                 if wrong:
                     self._miss('low', by, incident)
-                self._close(incident, None, 'low' if wrong else None)
+                self._close(incident, None)
                 self.stats['skipped'] += 1
                 self._abandon_task(robot)
                 robot.state = 'idle'

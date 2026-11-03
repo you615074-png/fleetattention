@@ -54,6 +54,7 @@ def summarize(episode: Episode) -> dict[str, Any]:
         'skipped': stats['skipped'],
         'abandoned': stats['abandoned'],
         'replanned': stats['replanned'],
+        'withdrawn': stats['withdrawn'],
         'incidents': sum(stats['incidents'].values()),
     }
     for by in ('supervisor', 'human', 'system'):
