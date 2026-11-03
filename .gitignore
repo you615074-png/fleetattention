@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+results/
+# Private notes and research, never published
+reference/
+DIRECTION.md

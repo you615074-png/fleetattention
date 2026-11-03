@@ -1,0 +1,19 @@
+[project]
+name = "fleetattention"
+version = "0.1.0"
+description = "An open benchmark for robot-fleet supervisors: how often they interrupt a person, how many risks they miss, and how much work gets done."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+fleetattention = "fleetattention.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
