@@ -98,7 +98,8 @@ class Config:
     yield_time: int = 30
     """Seconds a robot that yielded in a deadlock plans around the other robot's cell."""
     deadlock_wait: int = 20
-    max_sidesteps: int = 3
+    max_sidesteps: int = 12
+    """Head-on side-steps a robot makes between goals before it stops giving way and the standoff is escalated."""
     replan_avoid: int = 60
     """Seconds a robot avoids a goal it could not reach."""
 
@@ -147,6 +148,7 @@ class Config:
                      'scan_unreadable', 'rescan_success', 'human_accuracy'):
             check(getattr(self, name) <= 1, f'{name} is a probability and must be between 0 and 1')
         mix = dict(self.obstacle_mix)
+        check(len(mix) == len(self.obstacle_mix), 'obstacle_mix names each class once')
         check(set(mix) <= set(OBSTACLE_CLASSES) and sum(mix.values()) > 0,
               f'obstacle_mix needs positive weights for classes among {OBSTACLE_CLASSES}')
         check(set(self.obstacle_lifetime) >= set(mix), 'obstacle_lifetime needs a (low, high) range per class')
@@ -204,7 +206,10 @@ class Robot:
     blocked: int = 0
     sidesteps: int = 0
     """Head-on side-steps since the robot last reached a goal. Past `max_sidesteps` it stops giving way and the
-    standoff is escalated as a deadlock, so two robots in a one-lane aisle cannot swap places forever."""
+    standoff is escalated as a deadlock."""
+    yields_to: int | None = None
+    """The robot this one gave way to on its way to the current goal. It keeps giving way to it, so two robots in a
+    one-lane aisle settle who backs out once instead of taking turns forever."""
     no_path: int = 0
     deadlock_cooldown: int = 0
     low_raised: bool = False
@@ -266,9 +271,9 @@ class Episode:
         for i, cell in enumerate(setup.sample(list(self.layout.aisles), config.robots)):
             self.robots.append(Robot(i, cell, setup.uniform(40, 100), setup.uniform(*config.age_range)))
             self.occupied[cell] = i
-        self.pick_weight = self._slotting()
         self.bays = frozenset(self.layout.stations) | frozenset(self.layout.chargers)
         """Dead ends, entered from one side: robots never step aside into one and queue outside a full one."""
+        self.pick_weight = self._slotting()
         self.schedule = self._obstacle_schedule()
         self.next_obstacle = 0
         self.obstacles: dict[int, Obstacle] = {}
@@ -334,7 +339,9 @@ class Episode:
         rng, cfg = self.rng['obstacles'], self.cfg
         if cfg.obstacles_per_hour == 0:
             return []
-        aisles = list(self.layout.aisles)
+        # Nothing is left in a bay's entrance, the only way out of it.
+        entrances = {c for bay in self.bays for c in self.layout.neighbors(bay)}
+        aisles = [cell for cell in self.layout.aisles if cell not in entrances]
         human = [cell for cell in aisles if self.layout.in_human_zone(cell)]
         elsewhere = [cell for cell in aisles if cell not in self.pick_weight]
         picks, weights = zip(*self.pick_weight.items())
@@ -372,11 +379,12 @@ class Episode:
         obstacle = self.obstacle_cells.get(cell)
         return obstacle is not None and obstacle.revealed and obstacle.cls == 'box'
 
-    def _blocked_for(self, robot: Robot, own_avoid: bool = True):
-        """Cells the robot plans around. Its own avoid list (cells it yielded or goals it gave up) is a preference:
-        `_plan` drops it when it leaves no way out."""
+    def _blocked_for(self, robot: Robot, own_avoid: bool = True, suspected: bool = True):
+        """Cells the robot plans around. Its own avoid list (cells it yielded or goals it gave up) and the cells
+        suspected of an obstacle are preferences: `_plan` drops them when they leave no way out."""
         def blocked(cell: Cell) -> bool:
-            if self.suspected.get(cell, -1) > self.time or (own_avoid and robot.avoid.get(cell, -1) > self.time):
+            if (suspected and self.suspected.get(cell, -1) > self.time) or \
+                    (own_avoid and robot.avoid.get(cell, -1) > self.time):
                 return True
             occupant = self.occupied.get(cell)
             if occupant is not None and self.robots[occupant].state == 'dead':
@@ -429,18 +437,19 @@ class Episode:
         for index, incident_id in enumerate(question.incidents):
             incident = self.incidents[incident_id]
             self.sup.on_answer(self._shown(incident), answer)
+            same = index == 0 or (incident.obs.kind == 'obstacle'
+                                  and incident.data['obstacle'] is primary.data['obstacle'])
             if right and said == incident.correct:
-                if index == 0 or (incident.obs.kind == 'obstacle'
-                                  and incident.data['obstacle'] is primary.data['obstacle']):
+                if same:
                     self._resolve_by_person(incident)
                 else:
                     # The person looked at the question's incident only: a joined incident with another cause gets
                     # the action, not what the person learned about the first (which item it is, what an obstacle is).
                     self._apply(incident, said, 'human')
             else:
-                # A wrong answer is the person's miss; a right answer applied to a joined incident with another cause
-                # is the supervisor's, which joined it.
-                self._apply(incident, said, 'supervisor' if right and index > 0 else 'human')
+                # A wrong answer is the person's miss on what they looked at. Anything else that goes wrong is the
+                # supervisor's, which joined the incident: the answer was about another one, or about another place.
+                self._apply(incident, said, 'human' if same and not right else 'supervisor')
 
     def _resolve_by_person(self, incident: Incident) -> None:
         """A right answer: the person also tells the fleet what an obstacle is, and identifies a scanned item."""
@@ -514,6 +523,7 @@ class Episode:
 
     def _go(self, robot: Robot, goal: Cell, purpose: str) -> None:
         robot.goal, robot.purpose, robot.state, robot.no_path = goal, purpose, 'moving', 0
+        robot.yields_to = None
         robot.path = self._plan(robot, goal) or []
 
     def _plan(self, robot: Robot, goal: Cell) -> list[Cell] | None:
@@ -521,6 +531,9 @@ class Episode:
         if path is None:
             # A robot that yielded inside a dead-end bay would otherwise avoid its only way out.
             path = self.layout.path(robot.cell, goal, self._blocked_for(robot, own_avoid=False))
+        if path is None:
+            # Nor should a suspected obstacle shut a robot in: it goes and looks, and raises the obstacle if it is there.
+            path = self.layout.path(robot.cell, goal, self._blocked_for(robot, own_avoid=False, suspected=False))
         return path
 
     def _go_charge(self, robot: Robot) -> None:
@@ -621,6 +634,7 @@ class Episode:
         other = self.occupied.get(nxt)
         if other is not None:
             blocker = self.robots[other]
+            head_on = blocker.state == 'moving' and bool(blocker.path) and blocker.path[0] == robot.cell
             robot.blocked += 1
             if nxt == robot.goal and blocker.state != 'moving' and robot.blocked >= self.cfg.deadlock_after:
                 # A robot that stays on the goal (waiting at an obstacle, say) is not a standoff to settle: the
@@ -628,13 +642,16 @@ class Episode:
                 robot.blocked = 0
                 self._replan(robot)
                 return
-            if blocker.state == 'moving' and blocker.path and blocker.path[0] == robot.cell and robot.blocked >= 2:
+            if head_on and robot.blocked >= 2:
                 # Head-on: fleet traffic rules settle it without anyone (see `_gives_way`).
                 side = self._side_cells(robot, nxt)
-                if side and self._gives_way(robot, blocker, nxt):
+                if side and self._gives_way(robot, blocker):
                     self._step_to(robot, self.rng['traffic'].choice(side))
                     robot.path, robot.blocked = [], 0
                     robot.sidesteps += 1
+                    robot.yields_to = blocker.id
+                    if blocker.yields_to == robot.id:
+                        blocker.yields_to = None
                     return
             if robot.blocked >= 3:
                 # Local avoidance: plan around the cells other robots stand on, if the detour is short and really
@@ -644,7 +661,21 @@ class Episode:
                 if detour and detour[0] != nxt and len(detour) <= len(robot.path) + 8:
                     robot.path = detour
                     return
-            if robot.blocked >= self.cfg.deadlock_after and self.time >= robot.deadlock_cooldown:
+            if robot.blocked >= 4 * self.cfg.deadlock_after:
+                # Stuck behind a robot that does not move off (waiting for an answer, say), or in a standoff nobody
+                # settled: the fleet manager routes this robot around the robots that are standing still, however
+                # long the way, or else gives it another goal.
+                robot.blocked = 0
+                around = self.layout.path(robot.cell, robot.goal, lambda c: blocked(c) or (
+                    c in self.occupied and c != robot.goal and self.robots[self.occupied[c]].state != 'moving'))
+                if around and around[0] != nxt:
+                    robot.path = around
+                else:
+                    self._replan(robot)
+                return
+            if head_on and robot.blocked >= self.cfg.deadlock_after and self.time >= robot.deadlock_cooldown:
+                # Only a standoff the traffic rules could not settle is escalated. A robot queued behind one that
+                # has stopped waits: the stopped robot's own incident is what the supervisor needs to settle.
                 self._raise_deadlock(robot, blocker)
             return
         robot.path.pop(0)
@@ -659,15 +690,18 @@ class Episode:
                 if c != ahead and c not in self.occupied and c not in self.obstacle_cells and not blocked(c)
                 and c not in self.bays]
 
-    def _gives_way(self, robot: Robot, blocker: Robot, ahead: Cell) -> bool:
-        """Whether `robot` steps aside for `blocker`, which wants its cell. A robot that cannot step aside (in a
-        dead-end bay) never does, so the other one must. Otherwise the robot entering its goal steps aside, else the
-        one with the higher id; once either has stepped aside `max_sidesteps` times since reaching a goal, only the
-        id counts, so the two cannot keep taking turns in a one-lane aisle."""
+    def _gives_way(self, robot: Robot, blocker: Robot) -> bool:
+        """Whether `robot` steps aside for `blocker`, which wants its cell. A robot that has stepped aside
+        `max_sidesteps` times since reaching a goal no longer does. A robot that cannot step aside (in a dead-end bay,
+        or shut in at the end of an aisle) never does, so the other one must. Otherwise a robot keeps giving way to
+        the one it already gave way to; failing that, the robot entering its goal steps aside, else the one with the
+        higher id."""
+        if robot.sidesteps >= self.cfg.max_sidesteps:
+            return False
         if not self._side_cells(blocker, robot.cell):
             return True
-        if max(robot.sidesteps, blocker.sidesteps) >= self.cfg.max_sidesteps:
-            return robot.id > blocker.id
+        if robot.yields_to == blocker.id or blocker.yields_to == robot.id:
+            return robot.yields_to == blocker.id
         entering = lambda r: r.path[0] == r.goal
         return entering(robot) or (not entering(blocker) and robot.id > blocker.id)
 
@@ -681,7 +715,7 @@ class Episode:
             self._die(robot)
 
     def _arrive(self, robot: Robot) -> None:
-        robot.sidesteps = 0
+        robot.sidesteps, robot.yields_to = 0, None
         self._forget_obstacles(robot)
         if robot.purpose == 'pick':
             robot.state, robot.timer, robot.on_timer = 'working', self.time + self.cfg.pick_time, 'picked'

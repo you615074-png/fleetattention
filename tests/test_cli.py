@@ -48,7 +48,7 @@ def test_settings_can_be_changed_from_the_command_line(tmp_path, capsys):
     main(['run', 'never_ask', '--seeds', '1', '--out', str(tmp_path), '--set', 'hours=.05', '--set', 'robots=2'])
     assert '1 seeds x 0.05 h, 2 robots' in capsys.readouterr().out
     for bad in (['--set', 'nonsense=1'], ['--set', 'scan_failure=2'], ['--hours', '0'], ['--robots', '0'],
-                ['--set', 'max_rescans=1.5'], ['--hours', '.05', '--set', 'hours=.1']):
+                ['--set', 'max_rescans=1.5'], ['--hours', '.05', '--set', 'hours=.1'], ['--robots', '500']):
         with pytest.raises(SystemExit):
             main(['run', 'never_ask', '--seeds', '1', '--out', str(tmp_path), *bad])
 

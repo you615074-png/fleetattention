@@ -16,12 +16,6 @@ different prices on an interruption, a miss and an hour of lost throughput.
 > Status: phase 1 (simulation, metrics, rule baselines). Everything here is **simulated**; incident rates,
 > sensor accuracies, durations and costs are assumptions, open to challenge. Rates, accuracies and durations are in
 > `Config`, harm weights and cost profiles in `metrics`; the shapes of a few distributions are fixed in the code.
->
-> Known open issues (review round 6, being fixed): two robots in the one-lane aisle can keep stepping aside for
-> each other for minutes without escalating; many deadlock questions under `always_ask` and the thresholds are
-> caused by robots already waiting for the person's answer, which inflates their interruption counts; a robot
-> trapped in a bay behind an obstacle replans its order line every 15 seconds, which inflates "lines dropped".
-> RESULTS.md will be rerun once these are fixed.
 
 ## Quick start
 
@@ -67,10 +61,13 @@ truth directly (through the call stack, for example).
   wall, drop stations on the left (where people work), chargers on the right; stations and chargers are
   dead-end bays. 24 robots pick items and bring them to stations; one tick is one second; an episode is two
   hours. A fifth of the pick faces get four fifths of the orders.
-- Routine traffic is handled by the fleet itself (local detours, head-on rules, queueing outside a full bay and
-  stepping aside for robots coming out, a new goal when one cannot be reached or a robot stays on it, giving an
-  item up after three failed rescans), as real fleet managers do. Only what remains reaches the
-  supervisor.
+- The fleet manager handles traffic with simple rules of its own: short local detours; head-on rules (one robot
+  steps aside, and keeps giving way to the same robot until it reaches its goal, so the two settle who backs out of
+  the one-lane aisle); queueing outside a full bay and stepping aside for robots coming out; after a minute behind
+  a robot that stays put (one waiting for the person's answer, say), a way around it however long, or else a new
+  goal; a new goal when one cannot be reached or a robot stays on it; giving an item up after three failed rescans.
+  Only a standoff these rules cannot settle reaches the supervisor, as a deadlock. The rules are deliberately
+  plain, and traffic still costs throughput: robots queue, detour and sometimes give an order line up.
 - A simulated person answers one question at a time: about 20 seconds per answer, 10 seconds more when questions
   arrive back to back, right 97% of the time. Recovering a robot whose battery ran out takes five minutes of their
   time and counts as an interruption.
@@ -121,9 +118,10 @@ Run your own as `module:Class`, with `--secret-seeds` for scores you want to com
   action other than the right one that led to harm; misses of the person (wrong answers) and of the system are
   counted apart. The weights are a profile, not a truth; the per-severity counts are reported too.
 - `delivered/h`: correct deliveries per hour. This is where caution shows its cost.
-- Also reported: how busy the person is, how long questions wait, and order lines dropped for any reason. Orders
-  are an endless stream, so a robot that drops a line simply takes the next one; only the needless failures above
-  count as harm.
+- Also reported: how busy the person is, how long questions wait, and order lines dropped for any reason, including
+  lines the fleet manager gives up when it sends a robot to another goal (`replanned`). Orders are an endless
+  stream, so a robot that drops a line simply takes the next one; only the needless failures above count as harm,
+  and lines dropped by the traffic rules are no one's miss.
 - The Pareto front marks the supervisors no other one beats on all three axes. It compares means; check the
   standard errors before reading much into a close call. Cost profiles in `metrics.PROFILES` turn the three axes into
   one cost for a few example sites.

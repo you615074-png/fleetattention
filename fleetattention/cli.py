@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .isolate import Isolated, SupervisorError
+from .layout import warehouse
 from .metrics import AXES, PROFILES, aggregate, cost, paired, pareto
 from .supervisors import ABLATIONS, by_name
 from .world import Config, DecisionError, Episode
@@ -137,6 +138,9 @@ def main(argv: list[str] | None = None) -> None:
         config = replace(Config(), **changes)
     except (TypeError, ValueError) as error:
         parser.error(str(error))
+    room = len(warehouse().aisles)
+    if config.robots > room:
+        parser.error(f'{config.robots} robots do not fit in the {room} aisle cells of the warehouse')
     names = {'run': [getattr(args, 'supervisor', '')], 'sweep': SWEEP, 'ablate': ABLATE}[args.command]
     # The key never goes on a command line or into the environment, where the supervisor's process could find it.
     key = secrets.token_hex(32) if args.secret_seeds else \

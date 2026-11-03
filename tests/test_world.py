@@ -162,7 +162,8 @@ def test_no_path_makes_the_fleet_replan_instead_of_waiting_forever():
     robot = episode.robots[0]
     station = episode.layout.stations[0]
     entrance = (station[0] + 1, station[1])
-    episode.suspected[entrance] = 10_000
+    box = Obstacle(0, entrance, 'box', 10_000, revealed=True)
+    episode.obstacles[0], episode.obstacle_cells[entrance] = box, box
     place(episode, robot, (3, 5))
     episode._go(robot, station, 'drop')
     for _ in range(episode.cfg.deadlock_after + 1):
@@ -492,9 +493,9 @@ def test_extreme_but_legal_settings_run(overrides):
 
 
 GOLDEN = {  # seed 0, half an hour: (questions, recoveries, delivered/h, supervisor low misses, incidents)
-    'cost_aware': (16, 0, 1024.0, 0, 64),
-    'always_safe_reroute': (0, 0, 1032.0, 5, 83),
-    'reference': (36, 1, 900.0, 0, 72),
+    'cost_aware': (18, 0, 1026.0, 0, 70),
+    'always_safe_reroute': (0, 0, 1016.0, 5, 88),
+    'reference': (41, 0, 940.0, 0, 64),
 }
 
 
@@ -543,7 +544,8 @@ def test_yielding_in_a_deadlock_never_steps_into_a_bay():
 def test_wrong_types_and_shapes_in_the_settings_are_refused():
     for bad in ({'robots': 1.5}, {'max_rescans': 1.5}, {'robots': 0}, {'hours': True}, {'age_range': [-1, -1]},
                 {'obstacle_lifetime': {'box': [-1, 2], 'person': (1, 2), 'ghost': (1, 2)}},
-                {'obstacle_mix': (('box', 'x'),)}, {'classifier_accuracy': {'box': .5}}):
+                {'obstacle_mix': (('box', 'x'),)}, {'obstacle_mix': (('box', 0), ('box', 1))},
+                {'classifier_accuracy': {'box': .5}}):
         with pytest.raises(ValueError):
             Config(**bad)
     assert Config(age_range=[1, 2]).age_range == (1.0, 2.0)
@@ -566,7 +568,103 @@ def longest_freeze(name, seed):
     return longest
 
 
-@pytest.mark.parametrize('name, seed', [('reference', 3), ('reference', 4), ('never_ask', 13), ('always_ask', 6)])
+@pytest.mark.parametrize('name, seed', [('reference', 3), ('reference', 4), ('never_ask', 13), ('always_ask', 6),
+                                        ('always_safe', 0), ('always_safe', 20), ('threshold@0.8', 3)])
 def test_no_robot_is_stuck_for_long_in_episodes_that_once_jammed(name, seed):
-    # Robots queued outside a full bay once froze a cluster of robots for an hour or more on these seeds.
+    # Robots queued outside a full bay, or behind robots that stayed put, once froze for ten minutes to an hour or
+    # more on these seeds.
     assert longest_freeze(name, seed) < 600
+
+
+def reaches(episode, robot, cell, seconds):
+    """Whether the robot gets to the cell within the given seconds (it takes another task once there)."""
+    for _ in range(seconds):
+        episode.tick()
+        if robot.cell == cell:
+            return True
+    return False
+
+
+def test_two_robots_in_a_one_lane_aisle_settle_who_backs_out():
+    # A dead robot shuts the west end of the one-lane aisle in row 0: the robot at (10, 0) can only leave eastwards,
+    # through the robot that wants its cell. They once took turns stepping back for ever.
+    episode = Episode(Fixed(), 0, quiet(robots=3))
+    other, shut_in, dead = episode.robots
+    place(episode, dead, (9, 0)); dead.state = 'dead'
+    place(episode, shut_in, (10, 0)); place(episode, other, (12, 0))
+    episode._go(shut_in, (0, 11), 'drop')
+    episode._go(other, (10, 0), 'drop')
+    assert reaches(episode, other, (10, 0), 120)
+    assert not episode.incidents and shut_in.cell[1] > 0
+
+
+def test_a_standoff_the_traffic_rules_cannot_settle_is_escalated():
+    # Dead robots shut both ends of the aisle: neither robot can step aside.
+    episode = Episode(Fixed(), 0, quiet(robots=4))
+    a, b, *dead = episode.robots
+    for robot, cell in zip(dead, [(9, 0), (12, 0)]):
+        place(episode, robot, cell); robot.state = 'dead'
+    place(episode, a, (10, 0)); place(episode, b, (11, 0))
+    episode._go(a, (11, 0), 'drop')
+    episode._go(b, (10, 0), 'drop')
+    for _ in range(episode.cfg.deadlock_after + 2):
+        episode.tick()
+    assert episode.stats['incidents'] == {'deadlock': 1}
+
+
+def test_a_robot_behind_one_waiting_for_an_answer_waits_then_goes_around_without_asking():
+    # The robot at (10, 0) waits for the person; the one behind it in the one-lane aisle has to go the long way.
+    episode = Episode(Fixed(), 0, quiet(robots=2, human_median=10_000, human_spread=0))
+    stuck, behind = episode.robots
+    place(episode, stuck, (10, 0)); place(episode, behind, (11, 0))
+    episode._go(stuck, (8, 0), 'drop')
+    episode._raise(stuck, 'deadlock', (9, 0), 1, 'yield', .9, 'yield', {})
+    episode._go(behind, (8, 0), 'drop')
+    for _ in range(4 * episode.cfg.deadlock_after - 1):
+        episode.tick()
+    assert behind.cell == (11, 0)
+    assert reaches(episode, behind, (8, 0), 60) and len(episode.incidents) == 1
+
+
+def test_no_obstacle_is_left_in_a_bay_entrance():
+    episode = Episode(NeverAsk(), 0, Config(obstacles_per_hour=2000, hours=.5))
+    entrances = {c for bay in episode.bays for c in episode.layout.neighbors(bay)}
+    assert episode.schedule and not entrances & {cell for _, cell, _, _ in episode.schedule}
+
+
+def test_a_suspected_cell_does_not_shut_a_robot_in_a_bay():
+    episode = Episode(NeverAsk(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    station = episode.layout.stations[0]
+    place(episode, robot, station)
+    episode.suspected[(station[0] + 1, station[1])] = 10_000
+    episode._go(robot, (4, 4), 'drop')
+    assert reaches(episode, robot, (4, 4), 20) and not episode.stats['replanned']
+
+
+def test_a_wrong_answer_on_a_joined_incident_with_another_cause_is_the_supervisors_miss():
+    class AskThenJoin(Supervisor):
+        name = 'ask_then_join'
+
+        def decide(self, obs, ctx):
+            return Decision.join(ctx.pending[0].id) if ctx.pending else Decision.ask()
+
+    class Wrong:
+        """The person gets it wrong and says 'proceed'."""
+        def random(self):
+            return 1.0
+
+        def choice(self, options):
+            return 'proceed'
+
+    episode = Episode(AskThenJoin(), 0, quiet(robots=2))
+    for robot, cell in zip(episode.robots, [(10, 3), (20, 3)]):
+        box = Obstacle(robot.id, (cell[0] + 1, cell[1]), 'box', 10_000)
+        episode.obstacles[box.id], episode.obstacle_cells[box.cell] = box, box
+        place(episode, robot, cell)
+        episode._go(robot, (cell[0] + 3, cell[1]), 'drop')
+        episode._raise_obstacle(robot, box)
+    episode._decide_new()
+    episode.rng['human'] = Wrong()
+    episode._answer(episode.questions.pop(0))
+    assert [(m['severity'], m['by']) for m in episode.stats['misses']] == [('medium', 'human'), ('medium', 'supervisor')]
