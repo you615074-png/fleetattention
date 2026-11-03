@@ -172,3 +172,15 @@ def test_paired_differences():
 def test_t_quantiles_match_the_tables():
     for df, value in ((1, 12.706), (4, 2.776), (9, 2.262), (30, 2.042), (31, 2.040), (120, 1.980)):
         assert abs(t95(df) - value) < 1e-3
+
+
+def test_staged_waits_three_times_rescans_twice_and_finishes_only_with_a_wide_margin():
+    sup, ctx = by_name('staged'), Context(0, (), 0)
+    act = lambda o: (lambda d: d.action if d.type == 'act' else d.type)(sup.decide(o, ctx))
+    pick_face = {'motion': False, 'at_goal': True}
+    assert [act(obs(attempt=a, **pick_face)) for a in (1, 2, 3, 4)] == ['wait', 'wait', 'wait', 'ask']
+    assert act(obs()) == 'reroute'
+    assert [act(obs('scan_failure', attempt=a)) for a in (1, 2, 3)] == ['rescan', 'rescan', 'ask']
+    assert act(obs('low_battery', battery=10.2, estimated_need=4.5)) == 'finish_task'
+    assert act(obs('low_battery', battery=10.2, estimated_need=4.6)) == 'charge_now'
+    assert act(obs('deadlock')) == 'yield'

@@ -377,9 +377,32 @@ class Episode:
             self.obstacles[obstacle.id] = obstacle
             self.obstacle_cells[cell] = obstacle
             self._log('obstacle', id=obstacle.id, cell=cell, cls=cls)
-        for obstacle in [o for o in self.obstacles.values() if o.until <= self.time]:
+        gone = [o for o in self.obstacles.values() if o.until <= self.time]
+        for obstacle in gone:
             del self.obstacles[obstacle.id]
             del self.obstacle_cells[obstacle.cell]
+        if gone:
+            ids = {o.id for o in gone}
+            for question in list(self.questions.values()):
+                for incident_id in list(question.incidents):
+                    incident = self.incidents[incident_id]
+                    if incident.obs.kind == 'obstacle' and incident.data['obstacle'].id in ids:
+                        self._withdraw(question, incident)
+
+    def _withdraw(self, question: Question, incident: Incident) -> None:
+        """The obstacle a waiting question is about has gone: the fleet takes the incident back from the question
+        (the whole question once nothing is left in it) and the robot moves on. A question the person is already
+        answering stays. The question still counts as asked."""
+        if self.current is not None and self.current.type == 'question' and self.current.ref == question.id:
+            return
+        question.incidents.remove(incident.obs.incident)
+        if not question.incidents:
+            del self.questions[question.id]
+            self.queue = deque(j for j in self.queue if not (j.type == 'question' and j.ref == question.id))
+        incident.question = None
+        self._close(incident, None)
+        robot = self.robots[incident.obs.robot]
+        robot.state, robot.path = 'moving', []
 
     def _known_box(self, cell: Cell) -> bool:
         obstacle = self.obstacle_cells.get(cell)
@@ -694,7 +717,7 @@ class Episode:
                 around = self.layout.path(robot.cell, robot.goal, lambda c: blocked(c) or (
                     c in self.occupied and c != robot.goal and self.robots[self.occupied[c]].state != 'moving'))
                 if around and around[0] != nxt:
-                    robot.path = around
+                    robot.path, robot.closest_at = around, self.time  # the detour gets its own time to make headway
                 else:
                     self._replan(robot)
                 return
@@ -984,7 +1007,11 @@ class Episode:
                 robot.incident, robot.must_charge = None, True
                 self._go(robot, robot.pick, 'pick')
             else:
-                self._close(incident, None)
+                # Charging first gives the order line up: needlessly when the battery would have lasted.
+                wrong = incident.correct != 'charge_now'
+                if wrong:
+                    self._miss('low', by, incident)
+                self._close(incident, None, 'low' if wrong else None)
                 self._abandon_task(robot)
                 self._go_charge(robot)
         elif kind == 'scan_failure':

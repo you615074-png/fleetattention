@@ -493,9 +493,9 @@ def test_extreme_but_legal_settings_run(overrides):
 
 
 GOLDEN = {  # seed 0, half an hour: (questions, recoveries, delivered/h, supervisor low misses, incidents)
-    'cost_aware': (18, 0, 1026.0, 0, 70),
-    'always_safe_reroute': (0, 0, 1016.0, 5, 88),
-    'reference': (41, 0, 940.0, 0, 64),
+    'cost_aware': (18, 0, 1026.0, 6, 70),
+    'always_safe_reroute': (0, 0, 1016.0, 12, 88),
+    'reference': (40, 0, 962.0, 0, 62),
 }
 
 
@@ -718,3 +718,60 @@ def test_robots_do_not_shuffle_back_and_forth_for_long(name, seed):
     # Two robots that had both stopped giving way once shuffled around each other for ten minutes on seed 8; a
     # robot queued outside a bay stepped aside and back for five minutes on seed 19.
     assert longest_shuffle(name, seed) < 60
+
+
+def test_a_robot_in_a_bay_behind_one_waiting_for_an_answer_waits_and_keeps_its_task():
+    episode = Episode(Fixed(), 0, quiet(robots=2, human_median=10_000, human_spread=0))
+    inside, asking = episode.robots
+    station = episode.layout.stations[0]
+    place(episode, inside, station)
+    place(episode, asking, (station[0] + 1, station[1]))
+    episode._go(asking, (4, 4), 'drop')
+    episode._raise(asking, 'deadlock', (2, 1), 1, 'yield', .9, 'yield', {})
+    episode._decide_new()
+    episode._assign(inside)
+    pick = inside.pick
+    for _ in range(600):
+        episode.tick()
+    assert inside.cell == station and inside.pick == pick and not episode.stats['replanned']
+
+
+def test_a_detour_around_a_robot_that_stays_put_is_not_cut_short():
+    # The robot at (10, 0) waits for the person; the one behind it in the one-lane aisle is sent the long way round,
+    # which first leads away from its goal. The no-headway rule once gave the line up halfway.
+    episode = Episode(Fixed(), 0, quiet(robots=2, human_median=10_000, human_spread=0, no_headway_after=70))
+    stuck, behind = episode.robots
+    place(episode, stuck, (10, 0)); place(episode, behind, (11, 0))
+    episode._raise(stuck, 'deadlock', (9, 0), 1, 'yield', .9, 'yield', {})
+    episode._go(behind, (8, 0), 'drop')
+    assert reaches(episode, behind, (8, 0), 4 * episode.cfg.deadlock_after + 40)
+    assert not episode.stats['replanned']
+
+
+@pytest.mark.parametrize('enough', [True, False])
+def test_charging_first_is_a_low_miss_only_when_the_battery_would_have_lasted(enough):
+    episode = Episode(Fixed(low_battery='charge_now'), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    robot.battery = 8.0
+    episode._assign(robot)
+    episode.incidents[0].correct = 'finish_task' if enough else 'charge_now'
+    episode._decide_new()
+    assert episode.stats['abandoned'] == 1
+    assert [(m['severity'], m['by']) for m in episode.stats['misses']] == ([('low', 'supervisor')] if enough else [])
+
+
+def test_a_question_about_an_obstacle_that_has_gone_is_taken_back():
+    episode = Episode(Fixed(), 0, quiet(robots=2, human_median=10_000, human_spread=0))
+    for robot, cell in zip(episode.robots, [(10, 3), (20, 3)]):
+        obstacle = Obstacle(robot.id, (cell[0] + 1, cell[1]), 'person', 5 + robot.id)
+        episode.obstacles[obstacle.id], episode.obstacle_cells[obstacle.cell] = obstacle, obstacle
+        place(episode, robot, cell)
+        episode._go(robot, (cell[0] + 3, cell[1]), 'drop')
+        episode._raise_obstacle(robot, obstacle)
+    episode._decide_new()
+    for _ in range(10):
+        episode.tick()
+    # The person is still on the first question; the second, queued, is taken back and its robot moves on.
+    assert list(episode.questions) == [0] and not episode.queue
+    assert episode.robots[0].state == 'incident' and episode.robots[1].state != 'incident'
+    assert episode.stats['questions'] == 2

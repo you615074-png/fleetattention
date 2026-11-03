@@ -11,7 +11,7 @@ import random
 
 from .model import Answer, Context, Decision, Observation, Outcome
 
-# The action that does no harm when unsure, per kind.
+# The cautious action per kind: the one whose worst case is mildest.
 SAFE_DEFAULT = {'obstacle': 'wait', 'low_battery': 'charge_now', 'scan_failure': 'rescan', 'deadlock': 'yield'}
 
 
@@ -112,8 +112,8 @@ class MotionAware(CostAware):
 class Staged(Supervisor):
     """Asks later than `cost_aware`: it waits up to three times at an obstacle on the pick face before asking, and
     asks about a label only after two failed rescans. On a low battery it finishes the task only when the battery
-    covers the estimated need at the oldest robots' drain with the fleet's margin (1.8 x 1.25). Proposed by a
-    reviewer."""
+    covers the estimated need at the oldest robots' drain with the fleet's margin (1.8 x 1.25, the default
+    `age_range` and `battery_margin`: with other settings the rule no longer fits). Proposed by a reviewer."""
     name = 'staged'
 
     def decide(self, obs: Observation, ctx: Context) -> Decision:

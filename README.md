@@ -78,12 +78,13 @@ truth directly (through the call stack, for example).
 | Kind | Actions | What makes it hard |
 | --- | --- | --- |
 | `obstacle` | `proceed`, `reroute`, `wait` | A box, a person or a sensor ghost. Driving into a person is a **critical** miss, into a box a medium one. Several robots meet the same obstacle. In an aisle, driving around is cheap and right for anything but a ghost; on the pick face the robot is heading to (`at_goal`), rerouting gives the order line up, which is a **low** miss unless it was a box. Waiting for a ghost or a box can take many minutes. |
-| `low_battery` | `finish_task`, `charge_now` | The robot estimates with its nominal drain, but older robots drain up to 1.8x faster. Running out after a wrong `finish_task` is a **high** miss. |
+| `low_battery` | `finish_task`, `charge_now` | The robot estimates with its nominal drain, but older robots drain up to 1.8x faster. Running out after a wrong `finish_task` is a **high** miss. Charging first gives the order line up, a **low** miss when the battery would have lasted. |
 | `scan_failure` | `pick_anyway`, `rescan`, `skip` | The scanner is overconfident: its guess is right about 20 points less often than it claims. Half the failures are damaged labels that no rescan will read; after three failed rescans the fleet skips the line. A wrong pick is a **medium** miss; skipping a line whose guess was right, or that a rescan could have read, is a **low** one. A person can identify any item. |
 | `deadlock` | `yield`, `wait` | Never harmful whatever is chosen; asking about it only wastes attention and time. Rare (one to five an hour), since the fleet settles most standoffs itself; it tests interruptions and throughput, not harm. |
 
-With the default settings, most of the trade-off comes from scan failures: about 20 questions an hour, or about 8
-order lines an hour lost by never asking. Obstacles add a smaller part (see RESULTS.md).
+With the default settings, the cautious actions cost about 30 order lines an hour: about 20 from charging at the
+first battery warning, 8 from skipping items the scanner had right, and 1 or 2 from obstacles. How many of those a
+supervisor saves, and at the price of how many questions, is the trade-off (see RESULTS.md).
 
 Each observation carries the robot's suggested action and confidence. How well that confidence can be trusted differs
 per kind, and finding out is part of the job.
@@ -142,7 +143,7 @@ Run your own as `module:Class`, with `--secret-seeds` for scores you want to com
   [dsh-superagent](https://github.com/deepseek-ai/dsh-superagent-prototype) design, *take as little human
   attention as possible*: hard safety rules in code, one question per cause, a shadow phase that calibrates trust
   per incident kind, audits, and a safe default when the person is busy. It is a baseline to beat, not an answer,
-  and `cost_aware` and `motion_aware` already beat it on every axis. `reference-<feature>` runs it without one feature.
+  and `staged` beats it under every cost profile. `reference-<feature>` runs it without one feature.
 
 ## Results
 
