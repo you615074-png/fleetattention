@@ -555,14 +555,23 @@ def test_every_pick_face_weightless_still_places_obstacles_and_orders():
     Episode(NeverAsk(), 0, Config(hours=.1, hot_picks=1.0, hot_share=0.0, obstacles_per_hour=200.0)).run()
 
 
+def held_in_bay(episode, robot):
+    """In a bay whose way out is taken by a robot that is not moving: waiting there is right, not a jam."""
+    if robot.cell not in episode.bays:
+        return False
+    occupant = episode.occupied.get(next(iter(episode.layout.neighbors(robot.cell))))
+    return occupant is not None and episode.robots[occupant].state != 'moving'
+
+
 def longest_freeze(name, seed):
-    """The longest time any robot spent moving without leaving its cell in a two-hour episode."""
+    """The longest time any robot spent moving without leaving its cell in a two-hour episode, not counting robots
+    held in a bay."""
     episode = Episode(by_name(name), seed)
     since, longest = {r.id: (r.cell, 0) for r in episode.robots}, 0
     while episode.time < episode.duration:
         episode.tick()
         for r in episode.robots:
-            if r.state != 'moving' or r.cell != since[r.id][0]:
+            if r.state != 'moving' or r.cell != since[r.id][0] or held_in_bay(episode, r):
                 since[r.id] = (r.cell, episode.time)
             longest = max(longest, episode.time - since[r.id][1])
     return longest
@@ -632,16 +641,6 @@ def test_no_obstacle_is_left_in_a_bay_entrance():
     assert episode.schedule and not entrances & {cell for _, cell, _, _ in episode.schedule}
 
 
-def test_a_suspected_cell_does_not_shut_a_robot_in_a_bay():
-    episode = Episode(NeverAsk(), 0, quiet(robots=1))
-    robot = episode.robots[0]
-    station = episode.layout.stations[0]
-    place(episode, robot, station)
-    episode.suspected[(station[0] + 1, station[1])] = 10_000
-    episode._go(robot, (4, 4), 'drop')
-    assert reaches(episode, robot, (4, 4), 20) and not episode.stats['replanned']
-
-
 def test_a_wrong_answer_on_a_joined_incident_with_another_cause_is_the_supervisors_miss():
     class AskThenJoin(Supervisor):
         name = 'ask_then_join'
@@ -668,3 +667,54 @@ def test_a_wrong_answer_on_a_joined_incident_with_another_cause_is_the_superviso
     episode.rng['human'] = Wrong()
     episode._answer(episode.questions.pop(0))
     assert [(m['severity'], m['by']) for m in episode.stats['misses']] == [('medium', 'human'), ('medium', 'supervisor')]
+
+
+@pytest.mark.parametrize('name', ['cost_aware', 'always_ask'])
+def test_a_robot_shut_in_beside_an_obstacle_does_not_raise_it_over_and_over(name):
+    # A known box behind it and a person ahead in the one-lane aisle: rerouting leaves no way out. Planning once went
+    # straight back through the suspected cell, raising the obstacle every second.
+    episode = Episode(by_name(name), 1, quiet(robots=1))
+    robot = episode.robots[0]
+    place(episode, robot, (25, 0))
+    for obstacle in (Obstacle(0, (23, 0), 'box', 10_000, revealed=True), Obstacle(1, (26, 0), 'person', 10_000)):
+        episode.obstacles[obstacle.id], episode.obstacle_cells[obstacle.cell] = obstacle, obstacle
+    episode._go(robot, (0, 1), 'drop')
+    for _ in range(1800):
+        episode.tick()
+    assert episode.stats['incidents']['obstacle'] <= 10
+
+
+def test_a_robot_in_a_bay_behind_a_dead_robot_waits_and_keeps_its_task():
+    episode = Episode(NeverAsk(), 0, quiet(robots=2, recovery_time=10_000))
+    inside, dead = episode.robots
+    station = episode.layout.stations[0]
+    place(episode, inside, station)
+    place(episode, dead, (station[0] + 1, station[1])); episode._die(dead)
+    episode._assign(inside)
+    pick = inside.pick
+    for _ in range(600):
+        episode.tick()
+    assert inside.cell == station and inside.pick == pick and not episode.stats['replanned']
+
+
+def longest_shuffle(name, seed):
+    """The most times in a row any robot moved back to the cell it had just left."""
+    episode = Episode(by_name(name), seed)
+    trail = {r.id: [r.cell] for r in episode.robots}
+    run, longest = dict.fromkeys(trail, 0), 0
+    while episode.time < episode.duration:
+        episode.tick()
+        for r in episode.robots:
+            cells = trail[r.id]
+            if cells[-1] != r.cell:
+                cells.append(r.cell)
+                run[r.id] = run[r.id] + 1 if len(cells) >= 3 and cells[-3] == r.cell else 0
+                longest = max(longest, run[r.id])
+    return longest
+
+
+@pytest.mark.parametrize('name, seed', [('always_safe_reroute', 8), ('threshold@0.6', 19)])
+def test_robots_do_not_shuffle_back_and_forth_for_long(name, seed):
+    # Two robots that had both stopped giving way once shuffled around each other for ten minutes on seed 8; a
+    # robot queued outside a bay stepped aside and back for five minutes on seed 19.
+    assert longest_shuffle(name, seed) < 60

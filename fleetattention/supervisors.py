@@ -109,6 +109,26 @@ class MotionAware(CostAware):
         return super().decide(obs, ctx)
 
 
+class Staged(Supervisor):
+    """Asks later than `cost_aware`: it waits up to three times at an obstacle on the pick face before asking, and
+    asks about a label only after two failed rescans. On a low battery it finishes the task only when the battery
+    covers the estimated need at the oldest robots' drain with the fleet's margin (1.8 x 1.25). Proposed by a
+    reviewer."""
+    name = 'staged'
+
+    def decide(self, obs: Observation, ctx: Context) -> Decision:
+        if obs.kind == 'obstacle':
+            if obs.details.get('at_goal'):
+                return Decision.act('wait') if obs.attempt <= 3 else Decision.ask()
+            return Decision.act('reroute')
+        if obs.kind == 'scan_failure':
+            return Decision.ask() if obs.attempt >= 3 else Decision.act('rescan')
+        if obs.kind == 'low_battery':
+            enough = obs.details['battery'] > 1.8 * 1.25 * obs.details['estimated_need']
+            return Decision.act('finish_task' if enough else 'charge_now')
+        return Decision.act(SAFE_DEFAULT[obs.kind])
+
+
 class Reference(Supervisor):
     """A supervisor built on the dsh-superagent principle: take as little human attention as possible.
 
@@ -213,7 +233,8 @@ ABLATIONS = {
 
 
 def by_name(name: str) -> Supervisor:
-    """always_ask, never_ask, always_safe, always_safe_reroute, patient, cost_aware, motion_aware, threshold@<value>,
+    """always_ask, never_ask, always_safe, always_safe_reroute, patient, cost_aware, motion_aware, staged,
+    threshold@<value>,
     patient@<waits>, reference,
     reference-<feature> for the reference supervisor without one feature (see ABLATIONS), or module:Class for a
     supervisor of your own."""
@@ -230,7 +251,7 @@ def by_name(name: str) -> Supervisor:
         return sup
     known = {'always_ask': AlwaysAsk, 'never_ask': NeverAsk, 'always_safe': AlwaysSafe,
              'always_safe_reroute': lambda: AlwaysSafe('reroute'), 'patient': Patient, 'cost_aware': CostAware,
-             'motion_aware': MotionAware, 'reference': Reference}
+             'motion_aware': MotionAware, 'staged': Staged, 'reference': Reference}
     if name not in known:
         raise ValueError(f'unknown supervisor {name!r}; use {", ".join(known)}, threshold@<value>, patient@<waits>, '
                          f'reference-<{"|".join(ABLATIONS)}> or module:Class')

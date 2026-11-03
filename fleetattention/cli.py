@@ -22,7 +22,7 @@ from .supervisors import ABLATIONS, by_name
 from .world import Config, DecisionError, Episode
 
 SWEEP = ['always_ask', *(f'threshold@{t:g}' for t in (.99, .95, .9, .85, .8, .7, .6)), 'never_ask',
-         'always_safe', 'always_safe_reroute', 'patient', 'cost_aware', 'motion_aware', 'reference']
+         'always_safe', 'always_safe_reroute', 'patient', 'cost_aware', 'motion_aware', 'staged', 'reference']
 ABLATE = ['reference', *(f'reference-{feature}' for feature in ABLATIONS)]
 COLUMNS = [
     ('supervisor', 'supervisor', '{}'),

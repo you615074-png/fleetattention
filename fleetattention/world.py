@@ -102,6 +102,9 @@ class Config:
     """Head-on side-steps a robot makes between goals before it stops giving way and the standoff is escalated."""
     replan_avoid: int = 60
     """Seconds a robot avoids a goal it could not reach."""
+    no_headway_after: int = 90
+    """Seconds a moving robot may go without getting closer to its goal than it has been before the fleet manager
+    gives it another goal (two robots shuffling around each other, say)."""
 
     def __post_init__(self) -> None:
         """Check every setting and bring sequences to the shapes of the defaults (a list from `--set` becomes a
@@ -211,6 +214,9 @@ class Robot:
     """The robot this one gave way to on its way to the current goal. It keeps giving way to it, so two robots in a
     one-lane aisle settle who backs out once instead of taking turns forever."""
     no_path: int = 0
+    closest: int = 0
+    """The robot's smallest distance to its goal so far, and when it got there (time spent stopped excluded)."""
+    closest_at: int = 0
     deadlock_cooldown: int = 0
     low_raised: bool = False
     must_charge: bool = False
@@ -379,12 +385,11 @@ class Episode:
         obstacle = self.obstacle_cells.get(cell)
         return obstacle is not None and obstacle.revealed and obstacle.cls == 'box'
 
-    def _blocked_for(self, robot: Robot, own_avoid: bool = True, suspected: bool = True):
-        """Cells the robot plans around. Its own avoid list (cells it yielded or goals it gave up) and the cells
-        suspected of an obstacle are preferences: `_plan` drops them when they leave no way out."""
+    def _blocked_for(self, robot: Robot, own_avoid: bool = True):
+        """Cells the robot plans around. Its own avoid list (cells it yielded or goals it gave up) is a preference:
+        `_plan` drops it when it leaves no way out."""
         def blocked(cell: Cell) -> bool:
-            if (suspected and self.suspected.get(cell, -1) > self.time) or \
-                    (own_avoid and robot.avoid.get(cell, -1) > self.time):
+            if self.suspected.get(cell, -1) > self.time or (own_avoid and robot.avoid.get(cell, -1) > self.time):
                 return True
             occupant = self.occupied.get(cell)
             if occupant is not None and self.robots[occupant].state == 'dead':
@@ -470,6 +475,8 @@ class Episode:
 
     def _robot_step(self, robot: Robot) -> None:
         state = robot.state
+        if state != 'moving':
+            robot.closest_at = self.time  # time spent stopped is not lost headway
         if state == 'idle':
             self._assign(robot)
         elif state == 'moving':
@@ -523,17 +530,18 @@ class Episode:
 
     def _go(self, robot: Robot, goal: Cell, purpose: str) -> None:
         robot.goal, robot.purpose, robot.state, robot.no_path = goal, purpose, 'moving', 0
-        robot.yields_to = None
+        robot.yields_to, robot.closest, robot.closest_at = None, self._manhattan(robot.cell, goal), self.time
         robot.path = self._plan(robot, goal) or []
+
+    @staticmethod
+    def _manhattan(a: Cell, b: Cell) -> int:
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
     def _plan(self, robot: Robot, goal: Cell) -> list[Cell] | None:
         path = self.layout.path(robot.cell, goal, self._blocked_for(robot))
         if path is None:
             # A robot that yielded inside a dead-end bay would otherwise avoid its only way out.
             path = self.layout.path(robot.cell, goal, self._blocked_for(robot, own_avoid=False))
-        if path is None:
-            # Nor should a suspected obstacle shut a robot in: it goes and looks, and raises the obstacle if it is there.
-            path = self.layout.path(robot.cell, goal, self._blocked_for(robot, own_avoid=False, suspected=False))
         return path
 
     def _go_charge(self, robot: Robot) -> None:
@@ -599,6 +607,23 @@ class Episode:
             return
         if robot.purpose == 'pick' and self._known_box(robot.goal):
             self._give_up_pick(robot)
+            return
+        if robot.cell in self.bays:
+            # A bay has one way out. While a robot that is not moving (one waiting for an answer, or out of battery)
+            # stands in it, the robot inside waits, its task kept, and asks no one to make way.
+            exit_cell = next(iter(self.layout.neighbors(robot.cell)))
+            occupant = self.occupied.get(exit_cell)
+            if occupant is not None and self.robots[occupant].state != 'moving':
+                robot.path, robot.blocked, robot.no_path, robot.closest_at = [], 0, 0, self.time
+                return
+        distance = self._manhattan(robot.cell, robot.goal)
+        if distance < robot.closest:
+            robot.closest, robot.closest_at = distance, self.time
+        elif self.time - robot.closest_at >= self.cfg.no_headway_after:
+            # No headway for a long while, though moving: two robots that both stopped giving way shuffle around
+            # each other, say, or a robot keeps stepping aside for others. The fleet manager gives it another goal.
+            robot.blocked = 0
+            self._replan(robot)
             return
         blocked = self._blocked_for(robot)
         if not robot.path or blocked(robot.path[0]):
