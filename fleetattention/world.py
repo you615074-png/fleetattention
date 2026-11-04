@@ -298,7 +298,7 @@ class Episode:
         self.events: list[dict[str, Any]] = []
         self.stats: dict[str, Any] = {
             'questions': 0, 'answered': 0, 'answer_latency': 0, 'recoveries': 0, 'human_busy': 0,
-            'delivered': 0, 'mispicked': 0, 'skipped': 0, 'abandoned': 0, 'replanned': 0, 'withdrawn': 0, 'spawned_obstacles': 0,
+            'delivered': 0, 'mispicked': 0, 'skipped': 0, 'abandoned': 0, 'returned': 0, 'replanned': 0, 'withdrawn': 0, 'spawned_obstacles': 0,
             'misses': [], 'incidents': {}, 'decisions': {},
         }
         supervisor.reset(supervisor_seed(seed))
@@ -595,11 +595,12 @@ class Episode:
             del self.reserved_chargers[robot.charger]
         robot.charger = None
 
-    def _abandon_task(self, robot: Robot) -> None:
+    def _abandon_task(self, robot: Robot, started: bool = True) -> None:
         """Drop the current order line. A pending scan decision is cancelled before anything showed whether it was
-        right. A pending finish-task decision stays open: the robot still has to reach a charger on that battery."""
+        right. A pending finish-task decision stays open: the robot still has to reach a charger on that battery.
+        A line given back before the robot started on it (`started=False`) counts as returned, not dropped."""
         if robot.pick is not None:
-            self.stats['abandoned'] += 1
+            self.stats['abandoned' if started else 'returned'] += 1
         self._release_pick(robot)
         if robot.pick_incident is not None:
             self._close(self.incidents[robot.pick_incident], None)
@@ -780,7 +781,8 @@ class Episode:
         else:
             robot.state, robot.timer = 'charging', self.time + self.cfg.docking_time
             if robot.finish_incident is not None:
-                self._close(self.incidents[robot.finish_incident], True)
+                # Reaching the charger shows only that the battery lasted, not that finishing first was right.
+                self._close(self.incidents[robot.finish_incident], None)
                 robot.finish_incident = None
 
     def _timer_done(self, robot: Robot) -> None:
@@ -1016,8 +1018,9 @@ class Episode:
                 self._go(robot, robot.pick, 'pick')
             else:
                 # Charging first is never a miss, and costs next to nothing: the robot charges to full either way.
+                # The battery warning comes with a new task, so the line goes back before any work was done on it.
                 self._close(incident, None)
-                self._abandon_task(robot)
+                self._abandon_task(robot, started=False)
                 self._go_charge(robot)
         elif kind == 'scan_failure':
             if action == 'pick_anyway':

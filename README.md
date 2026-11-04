@@ -125,7 +125,8 @@ Run your own as `module:Class`, with `--secret-seeds` for scores you want to com
 - Also reported: how busy the person is, how long questions wait, and order lines dropped for any reason, including
   lines the fleet manager gives up when it sends a robot to another goal (`replanned`). Orders are an endless
   stream, so a robot that drops a line simply takes the next one; only the needless failures above count as harm,
-  and lines dropped by the traffic rules are no one's miss.
+  and lines dropped by the traffic rules are no one's miss. Lines a robot gives back before starting on them, when
+  it goes to charge at the battery warning that comes with a new task, are counted apart (`returned`).
 - `withdrawn`: questions the fleet took back because the obstacle they were about went away before anyone
   answered. A withdrawn question still counts in `interrupt/h`: it was raised, and the person may have read it.
 - The Pareto front marks the supervisors no other one beats on all three axes. It compares means; check the

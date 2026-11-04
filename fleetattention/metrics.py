@@ -2,7 +2,7 @@
 
 The three headline axes are interruptions per hour (questions plus forced recoveries), harm per hour from the
 supervisor's own misses, and correct deliveries per hour. Harm is a weighted count; the weights are a profile, not a
-truth. Throughput is an axis of its own so that caution is not free: waiting, detours and early charging show up
+truth. Throughput is an axis of its own so that caution is not free: waiting, detours and charging show up
 there. The trade-off surface is the result, not any single score.
 """
 from __future__ import annotations
@@ -53,6 +53,7 @@ def summarize(episode: Episode) -> dict[str, Any]:
         'delivered_per_hour': (stats['delivered'] - stats['mispicked']) / hours,
         'skipped': stats['skipped'],
         'abandoned': stats['abandoned'],
+        'returned': stats['returned'],
         'replanned': stats['replanned'],
         'withdrawn': stats['withdrawn'],
         'incidents': sum(stats['incidents'].values()),

@@ -27,7 +27,7 @@ Raw numbers are in `results/` (not committed; rerun to reproduce, except the sec
 | patient | 0.8 ± 0.1 | 4.5 ± 0.5 | 1026 ± 8 | 0.0 | 0.0 | 0.0 | 18.0 | 6% | 0 | * |
 | cost_aware | 22.9 ± 0.8 | 0.0 | 1036 ± 9 | 0.0 | 0.0 | 0.0 | 0.0 | 20% | 34 | * |
 | motion_aware | 22.1 ± 0.9 | 0.0 | 1035 ± 9 | 0.0 | 0.0 | 0.0 | 0.0 | 19% | 32 | * |
-| staged | 18.1 ± 0.6 | 0.0 | 1029 ± 7 | 0.0 | 0.0 | 0.0 | 0.0 | 16% | 33 | * |
+| staged | 18.1 ± 0.7 | 0.0 | 1030 ± 9 | 0.0 | 0.0 | 0.0 | 0.0 | 16% | 34 | * |
 | **reference** | 69.2 ± 1.7 | 0.5 ± 0.2 | 975 ± 8 | 0.0 | 0.0 | 1.0 | 0.0 | 65% | 58 | |
 
 ± is the standard error over seeds. *front* marks the Pareto front on all three axes (fewer interruptions, less
@@ -57,29 +57,34 @@ lines per hour.
 3. **Obstacles add a smaller trade-off of their own.** Waiting twice at a pick face before giving it up (`patient`)
    more than halves the lines lost to obstacles (0.7 an hour instead of 1.8). Waiting at every obstacle
    (`always_safe`) loses none, but costs 17% of the deliveries. `motion_aware`, which waits instead of asking when
-   the obstacle on the pick face moves, and `staged`, which waits three times first, ask about obstacles 1.4 and 0.9
+   the obstacle on the pick face moves, and `staged`, which waits three times first, ask about obstacles 1.5 and 0.7
    times an hour, against 2.2 for `cost_aware`.
 4. **Low batteries have no trade-off: charging first is always right.** A robot charges to full either way, so
    charging at the first warning only moves the session earlier; it adds about 2% more docking sessions and costs
    no measurable throughput. Finishing the task first gains nothing and risks a flat battery: on the robot's own
    estimate, which ignores that older robots drain up to 1.8 times faster, `never_ask` runs 8.5 batteries flat an
    hour by its own decision. So this kind tests only whether a supervisor wastes attention on it or takes the
-   robot's word: `reference` asks about low batteries 29 times an hour.
+   robot's word, which is a cheap test: `reference` asks about low batteries 29 times an hour, `always_ask` 30
+   times, a third of their questions, about a decision whose answer never changes. It is also frequent (30 to 34
+   incidents an hour, as many as obstacles), so it inflates the interruptions of supervisors that ask about it and the harm of
+   those that follow the robot.
 5. **So the answer depends on the price of attention, which is the point of the benchmark.** Under the cost
    profiles in `metrics.PROFILES`, the supervisors that ask where caution is expensive are best where attention is
    cheap (a dedicated operator), and the two that never ask are best under the balanced and scarce profiles, where a
    question costs half a wrong pick or more. Within each group the seeds do not tell the best from the runner-up:
-   `staged` against `motion_aware` +0.1 [-0.3, +0.6], `always_safe_reroute` against `patient` +0.0 [-0.6, +0.6]
+   `staged` against `motion_aware` +0.2 [-0.2, +0.5], `always_safe_reroute` against `patient` +0.0 [-0.6, +0.6]
    and +0.4 [-0.6, +1.4] per hour (paired mean and 95% interval). On the secret seeds the same groups win. Never
    asking and asking where caution is expensive do not dominate each other, and the tests check that this stays so.
    The misses that follow the person's wrong answers to the questions are counted as theirs (9 over the 20 hours for
-   `cost_aware`, 5 for `staged`).
+   `cost_aware`, 4 for `staged`).
 6. **Trusting the robot's confidence does not pay here.** Every threshold in the grid is dominated, no better on
    any axis and worse on at least one, by `cost_aware`, which ignores the confidence. Harm does not even fall
    steadily as the threshold rises: these 10 seeds give 0.9 and 0.85 the same harm, within the large errors of rare
-   misses.
+   misses. Most of the harm of the high thresholds is flat batteries, where the robot's confident suggestion to
+   finish is wrong by construction (12.5 of the 13.3 harm an hour at 0.95, 0.5 of 0.55 at 0.99); without that
+   kind the thresholds would still be dominated, by a smaller margin.
 7. **The reference supervisor is dominated by `cost_aware`, `motion_aware` and `staged`**: 69.2 against 18 to 23
-   interruptions an hour, 0.5 against 0 harm, 975 against 1029 to 1036 deliveries. Of its 1367 questions over the 10
+   interruptions an hour, 0.5 against 0 harm, 975 against 1030 to 1036 deliveries. Of its 1367 questions over the 10
    seeds, 64% are about kinds it never learns to trust (scan failures: the scanner is right at most 79% of the time,
    short of the 95% target; and low batteries, where the robot suggests finishing although charging is right), 18%
    about incidents below its learned threshold, 15% come from the shadow phase, and the rest are escalations and
@@ -87,7 +92,7 @@ lines per hour.
    action makes unnecessary.
 8. **There is room.** The open challenge is to fail fewer lines than the never-asking supervisors with fewer
    questions than the ones that ask. `staged`, three plain rules a reviewer proposed, asks 21% less than
-   `cost_aware` (18.1 interruptions an hour, 16.8 questions about scans) for 7 fewer deliveries an hour, and is on
+   `cost_aware` (18.1 interruptions an hour, 16.9 questions about scans) for 6 fewer deliveries an hour, and is on
    the front.
 
 ## Which parts of the reference supervisor matter
@@ -121,9 +126,9 @@ These are differences in this simulator with these settings, not general effects
 ## On secret seeds, with every supervisor isolated
 
 `--secret-seeds` runs each supervisor in its own process on seeds derived from a random key that was never written
-down. The picture is the same within the errors. One such run gave `cost_aware` 27.4 / 0 / 1062 (interrupt/h,
-harm/h, delivered/h), `motion_aware` 27.1 / 0 / 1063, `staged` 21.6 / 0 / 1055, `always_safe_reroute`
-0.4 / 6.3 / 1061, `patient` 0.3 / 5.6 / 1049 and `reference` 71.7 / 0.6 / 994. The same groups win as on the public
+down. The picture is the same within the errors. One such run gave `cost_aware` 26.1 / 0 / 1036 (interrupt/h,
+harm/h, delivered/h), `motion_aware` 25.2 / 0 / 1037, `staged` 20.2 / 0 / 1029, `always_safe_reroute`
+0.3 / 5.2 / 1036, `patient` 0.4 / 4.7 / 1027 and `reference` 69.6 / 0.9 / 984. The same groups win as on the public
 seeds: one of `cost_aware`, `motion_aware` and `staged` where attention is cheap, one of `patient` and
 `always_safe_reroute` under the other two profiles. Which member of a group comes first changes from key to key,
 since the seeds do not tell them apart. A secret run cannot be repeated exactly; rerunning it draws new seeds.
@@ -132,7 +137,7 @@ since the seeds do not tell them apart. A secret run cannot be repeated exactly;
 
 - **Everything is simulated.** Every rate, accuracy, duration and cost is an assumption, in `Config` and `metrics`.
   Different assumptions move every number.
-- **The benchmark was changed after ten rounds of review.** In the first version caution cost nothing; in the
+- **The benchmark was changed after eleven rounds of review.** In the first version caution cost nothing; in the
   second, robots rescanned damaged labels forever and queued behind them, which made caution look far more
   expensive than it is; the third fixed how misses are attributed and how the fleet treats an obstacle it already
   knows; the fourth fixed robots trapping each other at station bays and in the one-lane top aisle, which had cost
@@ -145,13 +150,14 @@ since the seeds do not tell them apart. A secret run cannot be repeated exactly;
   robots shut in a bay giving their order line up every 15 seconds; the eighth let the fleet take back a question
   whose obstacle has gone and stopped the no-headway rule cutting detours short; the ninth added docking time to
   charging and made withdrawing a question safe with joined incidents; the tenth made charging first the right
-  action on low batteries, as the simulator's costs say it is. (For a while, charging first when the battery would
+  action on low batteries, as the simulator's costs say it is; the eleventh dropped `staged`'s rule for finishing
+  on a full enough battery and counted lines given back before any work apart from dropped ones. (For a while, charging first when the battery would
   have lasted counted as a failed line. That was reverted: the simulator loses no throughput by it, so it was a
   price on nothing.) Obstacles on pick faces, damaged labels, a fleet limit on rescans
   and throughput as an axis came out of those reviews. They are plausible features of real warehouses, but they
   were chosen knowing what they would change, and the conclusions above depend on them. With no obstacles on pick
   faces and no damaged labels (the fourth command above), `always_safe_reroute` fails 0.8 lines an hour
-  (0.3 / 0.4 / 1045, against `staged`'s 4.8 / 0.5 / 1042 and `cost_aware`'s 11.7 / 0 / 1038) and is the best
+  (0.3 / 0.4 / 1045, against `staged`'s 4.8 / 0 / 1041 and `cost_aware`'s 11.7 / 0 / 1038) and is the best
   supervisor under all three cost profiles; `patient` scores exactly the same, because its rule then never
   applies.
 - **The same author wrote the simulator and almost every supervisor**, including `cost_aware`, `patient` and

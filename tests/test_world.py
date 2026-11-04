@@ -205,6 +205,19 @@ def test_a_scan_decision_cancelled_by_a_dead_battery_is_not_reported_as_right():
     assert [outcome.ok for _, outcome in sup.outcomes] == [None]
 
 
+@pytest.mark.parametrize('correct', ['pick_anyway', 'rescan', 'skip'])
+def test_skipping_a_line_is_a_low_miss_unless_skipping_was_right(correct):
+    episode = Episode(Fixed(scan_failure='skip'), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    episode._assign(robot)
+    episode._raise_scan(robot, 1)
+    episode.incidents[0].correct = correct
+    episode._decide_new()
+    assert episode.stats['skipped'] == 1 and robot.state == 'idle'
+    misses = [(m['severity'], m['by']) for m in episode.stats['misses']]
+    assert misses == ([] if correct == 'skip' else [('low', 'supervisor')])
+
+
 def test_a_damaged_label_never_rescans_and_the_fleet_gives_up_after_the_cap():
     episode = Episode(Fixed(scan_failure='rescan'), 0, quiet(robots=1, scan_unreadable=1.0))
     robot = episode.robots[0]
@@ -755,7 +768,8 @@ def test_charging_first_is_never_a_miss():
     episode._assign(robot)
     episode.incidents[0].correct = 'finish_task'
     episode._decide_new()
-    assert episode.stats['abandoned'] == 1 and not episode.stats['misses'] and robot.purpose == 'charge'
+    assert episode.stats['returned'] == 1 and not episode.stats['abandoned']
+    assert not episode.stats['misses'] and robot.purpose == 'charge'
 
 
 def test_every_charging_session_starts_with_docking():

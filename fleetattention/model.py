@@ -112,7 +112,7 @@ class Outcome:
 
     `ok` is True when the outcome confirmed the action (the obstacle walked away while the robot waited, the item
     delivered was the right one), False when it showed the action was wrong, and None when nothing observable says
-    either way (a detour, an early charge, a task cancelled before it finished). `severity` is set for a miss.
+    either way (a detour, a charge, a task cancelled before it finished). `severity` is set for a miss.
     """
     action: str
     ok: bool | None

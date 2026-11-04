@@ -1,4 +1,4 @@
-from fleetattention.metrics import aggregate, paired, pareto, summarize, t95
+from fleetattention.metrics import PROFILES, aggregate, cost, paired, pareto, summarize, t95
 from fleetattention.model import ACTIONS, Answer, Context, Observation, Outcome, PendingQuestion
 from fleetattention.supervisors import ABLATIONS, Reference, by_name
 from fleetattention.world import Config, Episode
@@ -153,13 +153,19 @@ def test_the_patient_baselines_wait_at_the_pick_face_before_giving_up():
 
 def test_caution_and_attention_trade_off():
     """Neither never asking nor asking where caution is expensive may dominate the other: never asking must cost
-    harm, and asking must cost attention. If one dominated, the benchmark would have a trivial answer."""
+    harm, and asking must cost attention. If one dominated, the benchmark would have a trivial answer. And the price
+    of attention must decide between them: where it is cheap a supervisor that asks is best, where it is scarce one
+    that never asks."""
     config = Config(hours=1)
+    never, asking = ('always_safe_reroute', 'patient'), ('cost_aware', 'motion_aware', 'staged')
     rows = {name: aggregate([Episode(by_name(name), seed, config).run() for seed in range(2)])
-            for name in ('always_safe_reroute', 'cost_aware')}
-    assert rows['always_safe_reroute']['harm_per_hour'] > rows['cost_aware']['harm_per_hour']
-    assert rows['always_safe_reroute']['interruptions_per_hour'] < rows['cost_aware']['interruptions_per_hour']
-    assert pareto(list(rows.values())) == {0, 1}
+            for name in never + asking}
+    for quiet_one in never:
+        for asker in asking:
+            assert rows[quiet_one]['harm_per_hour'] > rows[asker]['harm_per_hour']
+            assert rows[quiet_one]['interruptions_per_hour'] < rows[asker]['interruptions_per_hour']
+    best = lambda profile: min(rows, key=lambda name: cost(rows[name], PROFILES[profile]))
+    assert best('attention_cheap') in asking and best('attention_scarce') in never
 
 
 def test_paired_differences():
@@ -174,13 +180,12 @@ def test_t_quantiles_match_the_tables():
         assert abs(t95(df) - value) < 1e-3
 
 
-def test_staged_waits_three_times_rescans_twice_and_finishes_only_with_a_wide_margin():
+def test_staged_waits_three_times_rescans_twice_and_charges_first():
     sup, ctx = by_name('staged'), Context(0, (), 0)
     act = lambda o: (lambda d: d.action if d.type == 'act' else d.type)(sup.decide(o, ctx))
     pick_face = {'motion': False, 'at_goal': True}
     assert [act(obs(attempt=a, **pick_face)) for a in (1, 2, 3, 4)] == ['wait', 'wait', 'wait', 'ask']
     assert act(obs()) == 'reroute'
     assert [act(obs('scan_failure', attempt=a)) for a in (1, 2, 3)] == ['rescan', 'rescan', 'ask']
-    assert act(obs('low_battery', battery=10.2, estimated_need=4.5)) == 'finish_task'
-    assert act(obs('low_battery', battery=10.2, estimated_need=4.6)) == 'charge_now'
+    assert act(obs('low_battery', battery=90.0, estimated_need=4.5)) == 'charge_now'
     assert act(obs('deadlock')) == 'yield'
