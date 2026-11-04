@@ -506,7 +506,7 @@ def test_extreme_but_legal_settings_run(overrides):
 
 
 GOLDEN = {  # seed 0, half an hour: (questions, recoveries, delivered/h, supervisor low misses, incidents)
-    'cost_aware': (16, 1, 934.0, 0, 65),
+    'cost_aware': (16, 1, 938.0, 0, 66),
     'always_safe_reroute': (0, 0, 940.0, 4, 85),
     'reference': (36, 1, 904.0, 0, 63),
 }
@@ -1021,3 +1021,50 @@ def test_a_charger_still_held_by_a_robot_in_its_bay_is_not_free():
     robot.battery, robot.low_raised = 8.0, False
     episode._assign(robot)
     assert episode.incidents[0].obs.details['free_chargers'] == 0
+
+
+def test_parking_cells_are_off_pick_faces_bay_entrances_and_the_top_aisle():
+    episode = Episode(Fixed(), 0, quiet(robots=1))
+    assert episode.parking and not episode.parking & (set(episode.layout.picks) | episode.entrances)
+    assert all(cell[1] != 0 for cell in episode.parking)
+
+
+def test_two_waiting_robots_never_head_for_the_same_parking_cell():
+    episode = Episode(Fixed(), 0, quiet(robots=2))
+    a, b = episode.robots
+    place(episode, a, episode.layout.stations[0]); place(episode, b, episode.layout.stations[1])
+    episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers})
+    a.battery = b.battery = 3.0
+    episode._go_charge(a); episode._go_charge(b)
+    assert a.purpose == b.purpose == 'park' and a.goal != b.goal
+
+
+def test_a_robot_on_its_way_to_park_takes_a_charger_that_comes_free():
+    episode = Episode(Fixed(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    place(episode, robot, episode.layout.stations[0])
+    episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers})
+    robot.battery = 3.0
+    episode._go_charge(robot)
+    assert robot.purpose == 'park'
+    del episode.reserved_chargers[episode.layout.chargers[0]]
+    episode.tick()
+    assert robot.purpose == 'charge' and robot.charger == episode.layout.chargers[0]
+
+
+def test_the_label_leaves_a_free_charger_to_the_robot_already_waiting_for_it():
+    episode, charger = taking_turns()
+    waiting, robot = episode.robots
+    waiting.charge_wait, waiting.must_charge = 0, True
+    robot.battery, robot.age = 8.0, 1.0
+    episode._assign(robot)
+    incident = episode.incidents[0]
+    assert incident.obs.details['free_chargers'] == 0 and incident.correct == 'finish_task'
+
+
+def test_a_robot_recovered_in_a_charger_bay_can_charge_there():
+    episode, charger = taking_turns(robots=1)
+    robot = episode.robots[0]
+    place(episode, robot, charger)
+    episode._go_charge(robot)
+    assert robot.charger == charger

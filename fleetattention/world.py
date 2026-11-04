@@ -290,8 +290,9 @@ class Episode:
         self.entrances = frozenset(c for bay in self.bays for c in self.layout.neighbors(bay))
         # Where a robot waiting for a charger may stand: not in a bay or its entrance, not on a pick face, and not
         # in the one-lane top aisle.
+        picks = set(self.layout.picks)
         self.parking = frozenset(c for c in self.layout.aisles if c not in self.entrances and c[1] != 0
-                                 and c not in set(self.layout.picks))
+                                 and c not in picks)
         """Dead ends, entered from one side: robots never step aside into one and queue outside a full one."""
         self.pick_weight = self._slotting()
         self.schedule = self._obstacle_schedule()
@@ -590,8 +591,16 @@ class Episode:
     def _free_chargers(self, robot: Robot) -> list[Cell]:
         """Chargers this robot could take now: not reserved, not still held by a robot that has not left the bay,
         and not one it avoids."""
-        return [c for c in self.layout.chargers if c not in self.reserved_chargers and c not in self.occupied
-                and robot.avoid.get(c, -1) <= self.time]
+        return [c for c in self.layout.chargers if c not in self.reserved_chargers
+                and self.occupied.get(c, robot.id) == robot.id and robot.avoid.get(c, -1) <= self.time]
+
+    def _ahead(self, robot: Robot, free: list[Cell]) -> int:
+        """Queued robots that started waiting before this one (all of them, if it is not waiting yet) and could take
+        one of these chargers. A robot takes a free charger only while fewer are ahead of it than there are free.
+        The count is of robots, not chargers: when robots avoid different chargers, the order is only approximate."""
+        mine = (robot.charge_wait if robot.charge_wait is not None else self.time + 1, robot.id)
+        return sum(1 for r in self.robots if r is not robot and self._queued(r)
+                   and (r.charge_wait, r.id) < mine and set(self._free_chargers(r)) & set(free))
 
     def _queued(self, robot: Robot) -> bool:
         """Waiting for a charger and able to take one: idle or on its way to a parking cell."""
@@ -604,10 +613,7 @@ class Episode:
             robot.charge_wait = self.time
         free = self._free_chargers(robot)
         # First come, first served: robots that have waited longer take the free chargers first.
-        # Only robots that could take one of these chargers count.
-        ahead = sum(1 for r in self.robots if r is not robot and self._queued(r)
-                    and (r.charge_wait, r.id) < (robot.charge_wait, robot.id) and set(self._free_chargers(r)) & set(free))
-        if len(free) <= ahead:
+        if len(free) <= self._ahead(robot, free):
             robot.state = 'idle'  # every charger is taken; try again next tick
             if robot.cell not in self.parking:
                 self._park(robot)
@@ -946,7 +952,8 @@ class Episode:
         need += min(self._distance(robot, robot.drop, charger) for charger in self.layout.chargers)
         estimated = need * self.cfg.drain
         margin = robot.battery - estimated
-        free = len(self._free_chargers(robot))
+        chargers = self._free_chargers(robot)
+        free = max(0, len(chargers) - self._ahead(robot, chargers))  # robots already waiting take theirs first
         # A robot charges to full either way, so charging first costs nothing while a charger is free. With every
         # charger taken it stands idle until one frees up: then finishing the task first is right if the battery
         # covers it at the robot's true drain, with a margin for detours. Labelled on what is known now.
