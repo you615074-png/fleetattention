@@ -189,3 +189,26 @@ def test_staged_waits_three_times_rescans_twice_and_charges_first():
     assert [act(obs('scan_failure', attempt=a)) for a in (1, 2, 3)] == ['rescan', 'rescan', 'ask']
     assert act(obs('low_battery', battery=90.0, estimated_need=4.5)) == 'charge_now'
     assert act(obs('deadlock')) == 'yield'
+
+
+def test_interruptions_are_questions_plus_recoveries():
+    episode = Episode(by_name('never_ask'), 0, Config(hours=.01, obstacles_per_hour=0))
+    episode.run()
+    episode.stats['questions'], episode.stats['recoveries'] = 3, 2
+    assert summarize(episode)['interruptions_per_hour'] == 5 / (episode.duration / 3600)
+
+
+def test_a_threshold_needs_at_least_three_samples_at_or_above_it():
+    sup = Reference()
+    sup.reset(0)
+    sup.samples['obstacle'] = [(.99, True)] * 2 + [(.5, False)] * 4
+    assert sup.threshold('obstacle') == float('inf')
+    sup.samples['obstacle'] = [(.99, True)] * 3 + [(.5, False)] * 3
+    assert sup.threshold('obstacle') == .99
+
+
+def test_reference_audits_a_share_of_what_it_would_do_alone():
+    for audit, expected in ((0.0, 'act'), (1.0, 'ask')):
+        sup = calibrated()
+        sup.audit = audit
+        assert sup.decide(obs(), IDLE).type == expected

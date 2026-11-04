@@ -853,3 +853,52 @@ def test_two_robots_asking_about_one_obstacle_that_goes_lose_the_question_togeth
         episode.tick()
     assert list(episode.questions) == [0] and episode.stats['withdrawn'] == 1
     assert a.state != 'incident' and b.state != 'incident'
+
+
+@pytest.mark.parametrize('guess_correct', [True, False])
+def test_a_delivered_pick_confirms_a_right_guess_and_exposes_a_wrong_one(guess_correct):
+    sup = Fixed(scan_failure='pick_anyway')
+    episode = Episode(sup, 0, quiet(robots=1))
+    robot = episode.robots[0]
+    episode._assign(robot)
+    episode._raise_scan(robot, 1)
+    episode.incidents[0].data['guess_correct'] = guess_correct
+    episode._decide_new()
+    episode._deliver(robot)
+    assert [(o.ok, o.severity) for _, o in sup.outcomes] == [(True, None) if guess_correct else (False, 'medium')]
+    assert [m['severity'] for m in episode.stats['misses']] == ([] if guess_correct else ['medium'])
+
+
+def test_a_robot_dies_on_the_step_that_empties_its_battery():
+    episode = Episode(Fixed(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    cell = next(c for c in episode.layout.neighbors(robot.cell) if c not in episode.occupied)
+    robot.battery = episode.cfg.drain * robot.age
+    episode._step_to(robot, cell)
+    assert robot.state == 'dead' and episode.stats['recoveries'] == 1
+
+
+@pytest.mark.parametrize('cls', ['box', 'ghost', 'person'])
+def test_a_right_answer_tells_the_fleet_what_a_box_or_ghost_is(cls):
+    episode = Episode(AlwaysAsk(), 0, quiet(robots=1, human_accuracy=1.0))
+    robot = episode.robots[0]
+    episode._assign(robot)
+    obstacle = Obstacle(0, robot.pick, cls, 10_000)
+    episode.obstacles[0], episode.obstacle_cells[robot.pick] = obstacle, obstacle
+    while not episode.stats['answered']:
+        episode.tick()
+    assert obstacle.revealed == (cls != 'person')
+
+
+def test_reaching_a_charger_after_finishing_first_gives_no_verdict():
+    sup = Fixed(low_battery='finish_task')
+    episode = Episode(sup, 0, quiet(robots=1))
+    robot = episode.robots[0]
+    robot.battery = 8.0
+    episode._assign(robot)
+    for _ in range(3600):
+        episode.tick()
+        if sup.outcomes:
+            break
+    assert [(o.action, o.ok) for _, o in sup.outcomes] == [('finish_task', None)]
+    assert not episode.stats['misses']

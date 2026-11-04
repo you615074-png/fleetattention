@@ -65,9 +65,9 @@ lines per hour.
    estimate, which ignores that older robots drain up to 1.8 times faster, `never_ask` runs 8.5 batteries flat an
    hour by its own decision. So this kind tests only whether a supervisor wastes attention on it or takes the
    robot's word, which is a cheap test: `reference` asks about low batteries 29 times an hour, `always_ask` 30
-   times, a third of their questions, about a decision whose answer never changes. It is also frequent (30 to 34
-   incidents an hour, as many as obstacles), so it inflates the interruptions of supervisors that ask about it and the harm of
-   those that follow the robot.
+   times (two fifths and a third of their questions), about a decision whose answer never changes. It is also
+   frequent (30 to 34 incidents an hour, more than obstacles for most supervisors), so it inflates the
+   interruptions of supervisors that ask about it and the harm of those that follow the robot.
 5. **So the answer depends on the price of attention, which is the point of the benchmark.** Under the cost
    profiles in `metrics.PROFILES`, the supervisors that ask where caution is expensive are best where attention is
    cheap (a dedicated operator), and the two that never ask are best under the balanced and scarce profiles, where a
@@ -81,7 +81,7 @@ lines per hour.
    any axis and worse on at least one, by `cost_aware`, which ignores the confidence. Harm does not even fall
    steadily as the threshold rises: these 10 seeds give 0.9 and 0.85 the same harm, within the large errors of rare
    misses. Most of the harm of the high thresholds is flat batteries, where the robot's confident suggestion to
-   finish is wrong by construction (12.5 of the 13.3 harm an hour at 0.95, 0.5 of 0.55 at 0.99); without that
+   finish is wrong by construction (12.5 of the 13.2 harm an hour at 0.95, 0.5 of 0.55 at 0.99); without that
    kind the thresholds would still be dominated, by a smaller margin.
 7. **The reference supervisor is dominated by `cost_aware`, `motion_aware` and `staged`**: 69.2 against 18 to 23
    interruptions an hour, 0.5 against 0 harm, 975 against 1030 to 1036 deliveries. Of its 1367 questions over the 10

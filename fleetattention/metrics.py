@@ -61,8 +61,8 @@ def summarize(episode: Episode) -> dict[str, Any]:
     for by in ('supervisor', 'human', 'system'):
         for severity in SEVERITIES:
             row[f'{by}_{severity}'] = sum(1 for m in misses if m['by'] == by and m['severity'] == severity)
-    for kind in ('obstacle', 'low_battery', 'scan_failure'):
-        # Where the supervisor's needless failed lines come from.
+    for kind in ('obstacle', 'scan_failure'):
+        # Where the supervisor's needless failed lines come from (charging first never fails one).
         row[f'supervisor_low_{kind}'] = sum(1 for m in misses if m['by'] == 'supervisor' and m['severity'] == 'low'
                                             and m.get('kind') == kind)
     row['harm_per_hour'] = sum(HARM_WEIGHTS[s] * row[f'supervisor_{s}'] for s in SEVERITIES) / hours
