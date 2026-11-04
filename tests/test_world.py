@@ -506,9 +506,9 @@ def test_extreme_but_legal_settings_run(overrides):
 
 
 GOLDEN = {  # seed 0, half an hour: (questions, recoveries, delivered/h, supervisor low misses, incidents)
-    'cost_aware': (17, 1, 988.0, 0, 68),
-    'always_safe_reroute': (0, 0, 990.0, 5, 89),
-    'reference': (37, 1, 896.0, 0, 73),
+    'cost_aware': (18, 1, 940.0, 0, 65),
+    'always_safe_reroute': (0, 0, 932.0, 4, 82),
+    'reference': (36, 1, 890.0, 0, 64),
 }
 
 
@@ -902,3 +902,24 @@ def test_reaching_a_charger_after_finishing_first_gives_no_verdict():
             break
     assert [(o.action, o.ok) for _, o in sup.outcomes] == [('finish_task', None)]
     assert not episode.stats['misses']
+
+
+@pytest.mark.parametrize('taken, age, right', [
+    (False, 1.0, 'charge_now'), (True, 1.0, 'finish_task'), (True, 50.0, 'charge_now')])
+def test_finishing_first_is_right_only_when_every_charger_is_taken_and_the_battery_lasts(taken, age, right):
+    episode = Episode(Fixed(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    robot.battery, robot.age = 8.0, age  # the robot's estimate ignores its age: only the label sees it
+    if taken:
+        episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers})
+    episode._assign(robot)
+    incident = episode.incidents[0]
+    assert incident.obs.details['free_chargers'] == (0 if taken else len(episode.layout.chargers))
+    assert incident.correct == right
+
+
+def test_the_charger_setting_keeps_that_many_bays():
+    for n in (1, 4, 7):
+        assert len(Episode(Fixed(), 0, quiet(chargers=n)).layout.chargers) == n
+    with pytest.raises(ValueError):
+        Episode(Fixed(), 0, quiet(chargers=8))

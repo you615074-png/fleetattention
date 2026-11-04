@@ -58,8 +58,8 @@ truth directly (through the call stack, for example).
 ## The simulation
 
 - A 32 x 21 grid warehouse: double shelf rows with two-cell aisles between them and a one-lane aisle along the top
-  wall, drop stations on the left (where people work), chargers on the right; stations and chargers are
-  dead-end bays. 24 robots pick items and bring them to stations; one tick is one second; an episode is two
+  wall, drop stations on the left (where people work), four chargers on the right (`chargers`, up to seven); stations
+  and chargers are dead-end bays. 24 robots pick items and bring them to stations; one tick is one second; an episode is two
   hours. A fifth of the pick faces get four fifths of the orders.
 - The fleet manager handles traffic with simple rules of its own: short local detours; head-on rules (one robot
   steps aside, and keeps giving way to the same robot until it reaches its goal, so the two settle who backs out of
@@ -78,13 +78,13 @@ truth directly (through the call stack, for example).
 | Kind | Actions | What makes it hard |
 | --- | --- | --- |
 | `obstacle` | `proceed`, `reroute`, `wait` | A box, a person or a sensor ghost. Driving into a person is a **critical** miss, into a box a medium one. Several robots meet the same obstacle. In an aisle, driving around is cheap and right for anything but a ghost; on the pick face the robot is heading to (`at_goal`), rerouting gives the order line up, which is a **low** miss unless it was a box. Waiting for a ghost or a box can take many minutes. |
-| `low_battery` | `finish_task`, `charge_now` | The robot estimates with its nominal drain, but older robots drain up to 1.8x faster. `charge_now` is always right: a robot charges to full either way, so finishing first gains nothing, and running out after it is a **high** miss. Reaching a charger after finishing first gives the supervisor no verdict. Every charging session starts with a minute of docking, whenever it happens. |
+| `low_battery` | `finish_task`, `charge_now` | The robot estimates with its nominal drain, but older robots drain up to 1.8x faster. The observation shows how many chargers are free. A robot charges to full either way, so while a charger is free `charge_now` is right. With every charger taken, a robot sent to charge stands idle until one frees up; then `finish_task` is right if the battery covers the task at the robot's true drain with a 25% margin (`finish_margin`). Running out after finishing first is a **high** miss; charging when finishing was right costs only throughput. Reaching a charger after finishing first gives the supervisor no verdict. Every charging session starts with a minute of docking, whenever it happens. |
 | `scan_failure` | `pick_anyway`, `rescan`, `skip` | The scanner is overconfident: its guess is right about 20 points less often than it claims. Half the failures are damaged labels that no rescan will read; after three failed rescans the fleet skips the line. A wrong pick is a **medium** miss; skipping a line whose guess was right, or that a rescan could have read, is a **low** one. A person can identify any item. |
 | `deadlock` | `yield`, `wait` | Never harmful whatever is chosen; asking about it only wastes attention and time. Rare (one to five an hour), since the fleet settles most standoffs itself; it tests interruptions and throughput, not harm. |
 
 With the default settings, most of the trade-off comes from scan failures: about 20 questions an hour, or about 8
-order lines an hour lost by never asking. Obstacles add a smaller part, and on low batteries caution costs almost
-nothing (see RESULTS.md).
+order lines an hour lost by never asking. Obstacles add a smaller part, and low batteries a small one: with every
+charger taken finishing a task first is sometimes right, but worth at most a few deliveries an hour (see RESULTS.md).
 
 Each observation carries the robot's suggested action and confidence. How well that confidence can be trusted differs
 per kind, and finding out is part of the job.
@@ -141,7 +141,9 @@ Run your own as `module:Class`, with `--secret-seeds` for scores you want to com
   These are strong baselines: see RESULTS.md for how they compare under the three cost profiles.
 - `cost_aware`: ask only where the cautious action is expensive (an obstacle on the pick face, a label one rescan
   could not read), otherwise take it. `motion_aware` waits instead of asking when that obstacle moves. `staged`,
-  proposed by a reviewer, asks later still: after three waits at the pick face and two failed rescans.
+  proposed by a reviewer, asks later still: after three waits at the pick face and two failed rescans; on a low
+  battery it finishes first only when no charger is free and the battery covers the estimate at the oldest
+  robots' drain.
 - `reference`: built on the principle of DeepSeek's open-source
   [dsh-superagent](https://github.com/deepseek-ai/dsh-superagent-prototype) design, *take as little human
   attention as possible*: hard safety rules in code, one question per cause, a shadow phase that calibrates trust

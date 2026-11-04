@@ -56,12 +56,13 @@ class Layout:
         return None
 
 
-def warehouse(width: int = 32, height: int = 21, human_zone_width: int = 5) -> Layout:
+def warehouse(width: int = 32, height: int = 21, human_zone_width: int = 5, chargers: int | None = None) -> Layout:
     """Double shelf rows with two-cell aisles between them, cross aisles every seventh column,
     drop stations on the left edge and chargers on the right edge.
 
     Stations and chargers are dead-end bays entered from the side: the edge cells between them are walls, so robots
-    never use an edge column as a corridor."""
+    never use an edge column as a corridor. `chargers` keeps that many of the charger bays, spread evenly; the
+    others are walled off."""
     racks = {
         (x, y)
         for x in range(human_zone_width, width - 4)
@@ -69,7 +70,15 @@ def warehouse(width: int = 32, height: int = 21, human_zone_width: int = 5) -> L
         if y % 4 in (1, 2) and x % 7 != 0 and 0 < y < height - 1
     }
     stations = tuple((0, y) for y in range(1, height - 1, 2))
-    chargers = tuple((width - 1, y) for y in range(1, height - 1, 3))
+    bays = [(width - 1, y) for y in range(1, height - 1, 3)]
+    if chargers is not None:
+        if not 1 <= chargers <= len(bays):
+            raise ValueError(f'the layout has room for 1 to {len(bays)} chargers')
+        if chargers == 1:
+            bays = [bays[len(bays) // 2]]
+        else:
+            bays = [bays[round(i * (len(bays) - 1) / (chargers - 1))] for i in range(chargers)]
+    chargers = tuple(bays)
     walls = {(x, y) for x in (0, width - 1) for y in range(height)} - set(stations) - set(chargers)
     shelves = frozenset(racks | walls)
     special = set(stations) | set(chargers)

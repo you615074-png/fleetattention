@@ -68,6 +68,11 @@ class Config:
     low_battery_at: float = 9.0
     """An idle robot below this battery raises an incident before its next task: one more task, or charge now?"""
     charge_rate: float = .5
+    chargers: int = 4
+    """Charger bays in use, spread evenly along the right edge (the layout has room for 7). With 4 for 24 robots a
+    robot often finds every charger taken, which is what makes finishing a task first sometimes right."""
+    finish_margin: float = 1.25
+    """Finishing the task first is labelled right only if the battery covers this many times the task's true need."""
     docking_time: int = 60
     """Seconds of every charging session spent docking and undocking, whatever the battery. A fixed cost per session:
     charging at the first warning adds only a few per cent more sessions."""
@@ -157,6 +162,7 @@ class Config:
               f'obstacle_mix needs positive weights for classes among {OBSTACLE_CLASSES}')
         check(set(self.obstacle_lifetime) >= set(mix), 'obstacle_lifetime needs a (low, high) range per class')
         check(self.robots >= 1, 'an episode needs at least one robot')
+        check(self.chargers >= 1, 'an episode needs at least one charger')
         check(self.hours * 3600 >= 1, 'an episode must last at least one second')
         check(self.max_rescans >= 1 and self.charge_rate > 0 and self.human_median > 0,
               'max_rescans, charge_rate and human_median must be positive')
@@ -262,7 +268,7 @@ class Episode:
     def __init__(self, supervisor: Supervisor, seed: int | str = 0, config: Config = Config(),
                  layout: Layout | None = None, record: bool = False) -> None:
         self.sup, self.seed, self.cfg = supervisor, seed, config
-        self.layout = layout or warehouse()
+        self.layout = layout or warehouse(chargers=config.chargers)
         self.duration = int(config.hours * 3600)
         self.record = record
         if config.robots > len(self.layout.aisles):
@@ -901,11 +907,15 @@ class Episode:
         need += min(self._distance(robot, robot.drop, charger) for charger in self.layout.chargers)
         estimated = need * self.cfg.drain
         margin = robot.battery - estimated
-        # Charging first is always right: a robot charges to full either way, so finishing the task first gains no
-        # throughput, and it risks a flat battery (the robot's estimate ignores its age).
+        free = sum(c not in self.reserved_chargers for c in self.layout.chargers)
+        # A robot charges to full either way, so charging first costs nothing while a charger is free. With every
+        # charger taken it stands idle until one frees up: then finishing the task first is right if the battery
+        # covers it at the robot's true drain, with a margin for detours. Labelled on what is known now.
+        enough = robot.battery > self.cfg.finish_margin * need * self.cfg.drain * robot.age
         self._raise(robot, 'low_battery', robot.cell, 1, 'finish_task' if margin > 0 else 'charge_now',
-                    .5 + .5 * math.tanh(abs(margin) / 2), 'charge_now',
-                    {'battery': round(robot.battery, 2), 'estimated_need': round(estimated, 2)})
+                    .5 + .5 * math.tanh(abs(margin) / 2), 'finish_task' if free == 0 and enough else 'charge_now',
+                    {'battery': round(robot.battery, 2), 'estimated_need': round(estimated, 2),
+                     'free_chargers': free})
 
     def _raise_scan(self, robot: Robot, attempt: int) -> None:
         robot.attempts['scan'] = attempt

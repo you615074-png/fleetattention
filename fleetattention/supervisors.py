@@ -111,8 +111,9 @@ class MotionAware(CostAware):
 
 class Staged(Supervisor):
     """Asks later than `cost_aware`: it waits up to three times at an obstacle on the pick face before asking, and
-    asks about a label only after two failed rescans. Proposed by a reviewer, with a battery rule that was dropped
-    once charging first became always right."""
+    asks about a label only after two failed rescans. On a low battery it finishes the task first only when every
+    charger is taken and the battery covers the estimated need at the oldest robots' drain with a margin for detours
+    (1.8 x 1.25, for the default `age_range`). Proposed by a reviewer."""
     name = 'staged'
 
     def decide(self, obs: Observation, ctx: Context) -> Decision:
@@ -122,6 +123,10 @@ class Staged(Supervisor):
             return Decision.act('reroute')
         if obs.kind == 'scan_failure':
             return Decision.ask() if obs.attempt >= 3 else Decision.act('rescan')
+        if obs.kind == 'low_battery':
+            d = obs.details
+            enough = d['free_chargers'] == 0 and d['battery'] > 1.8 * 1.25 * d['estimated_need']
+            return Decision.act('finish_task' if enough else 'charge_now')
         return Decision.act(SAFE_DEFAULT[obs.kind])
 
 

@@ -180,14 +180,16 @@ def test_t_quantiles_match_the_tables():
         assert abs(t95(df) - value) < 1e-3
 
 
-def test_staged_waits_three_times_rescans_twice_and_charges_first():
+def test_staged_waits_three_times_rescans_twice_and_finishes_only_when_no_charger_is_free():
     sup, ctx = by_name('staged'), Context(0, (), 0)
     act = lambda o: (lambda d: d.action if d.type == 'act' else d.type)(sup.decide(o, ctx))
     pick_face = {'motion': False, 'at_goal': True}
     assert [act(obs(attempt=a, **pick_face)) for a in (1, 2, 3, 4)] == ['wait', 'wait', 'wait', 'ask']
     assert act(obs()) == 'reroute'
     assert [act(obs('scan_failure', attempt=a)) for a in (1, 2, 3)] == ['rescan', 'rescan', 'ask']
-    assert act(obs('low_battery', battery=90.0, estimated_need=4.5)) == 'charge_now'
+    assert act(obs('low_battery', battery=10.2, estimated_need=4.5, free_chargers=0)) == 'finish_task'
+    assert act(obs('low_battery', battery=10.2, estimated_need=4.6, free_chargers=0)) == 'charge_now'
+    assert act(obs('low_battery', battery=90.0, estimated_need=4.5, free_chargers=1)) == 'charge_now'
     assert act(obs('deadlock')) == 'yield'
 
 
