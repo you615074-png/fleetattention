@@ -112,7 +112,7 @@ def test_chargers_are_never_double_booked():
         episode._go_charge(robot)
     booked = [r for r in episode.robots if r.charger is not None]
     assert len(booked) == len(episode.layout.chargers)
-    assert all(r.state == 'idle' for r in episode.robots if r.charger is None)
+    assert all(r.state == 'idle' or r.purpose == 'park' for r in episode.robots if r.charger is None)
 
 
 def test_a_known_box_on_the_pick_face_gives_the_order_line_back_once():
@@ -506,9 +506,9 @@ def test_extreme_but_legal_settings_run(overrides):
 
 
 GOLDEN = {  # seed 0, half an hour: (questions, recoveries, delivered/h, supervisor low misses, incidents)
-    'cost_aware': (16, 0, 956.0, 0, 68),
-    'always_safe_reroute': (0, 0, 940.0, 4, 86),
-    'reference': (36, 1, 906.0, 0, 61),
+    'cost_aware': (16, 1, 934.0, 0, 65),
+    'always_safe_reroute': (0, 0, 940.0, 4, 85),
+    'reference': (36, 1, 904.0, 0, 63),
 }
 
 
@@ -966,3 +966,58 @@ def test_chargers_go_to_the_robot_that_has_waited_longest():
     assert first.charger is None
     episode._go_charge(second)
     assert second.charger == episode.layout.chargers[0]
+
+
+def test_a_waiting_robot_on_a_bay_entrance_parks_and_waits_idle():
+    episode = Episode(Fixed(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers})
+    robot.battery = 3.0
+    place(episode, robot, next(iter(episode.entrances)))
+    episode._go_charge(robot)
+    assert robot.purpose == 'park' and robot.goal in episode.parking
+    assert reaches(episode, robot, robot.goal, 120)
+    episode.tick()
+    assert robot.state == 'idle' and robot.charger is None
+
+
+def taking_turns(robots=2):
+    episode = Episode(Fixed(), 0, quiet(robots=robots))
+    for robot in episode.robots:
+        robot.battery = 3.0
+        place(episode, robot, sorted(episode.parking)[robot.id * 7])
+    episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers[1:]})
+    return episode, episode.layout.chargers[0]
+
+
+def test_a_dead_robot_or_one_that_avoids_the_charger_does_not_hold_up_the_queue():
+    for block in ('dead', 'avoid'):
+        episode, charger = taking_turns()
+        early, late = episode.robots
+        early.charge_wait, late.charge_wait = 0, 5
+        if block == 'dead':
+            early.state = 'dead'
+        else:
+            early.avoid[charger] = episode.time + 60
+        episode._go_charge(late)
+        assert late.charger == charger, block
+
+
+def test_robots_that_started_waiting_together_take_turns_by_id():
+    episode, charger = taking_turns()
+    first, second = episode.robots
+    first.charge_wait = second.charge_wait = 0
+    episode._go_charge(second)
+    assert second.charger is None
+    episode._go_charge(first)
+    assert first.charger == charger
+
+
+def test_a_charger_still_held_by_a_robot_in_its_bay_is_not_free():
+    episode, charger = taking_turns()
+    leaving, robot = episode.robots
+    place(episode, leaving, charger)  # done charging, reservation released, not yet out of the bay
+    assert episode._free_chargers(robot) == []
+    robot.battery, robot.low_raised = 8.0, False
+    episode._assign(robot)
+    assert episode.incidents[0].obs.details['free_chargers'] == 0

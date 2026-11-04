@@ -288,6 +288,10 @@ class Episode:
             self.occupied[cell] = i
         self.bays = frozenset(self.layout.stations) | frozenset(self.layout.chargers)
         self.entrances = frozenset(c for bay in self.bays for c in self.layout.neighbors(bay))
+        # Where a robot waiting for a charger may stand: not in a bay or its entrance, not on a pick face, and not
+        # in the one-lane top aisle.
+        self.parking = frozenset(c for c in self.layout.aisles if c not in self.entrances and c[1] != 0
+                                 and c not in set(self.layout.picks))
         """Dead ends, entered from one side: robots never step aside into one and queue outside a full one."""
         self.pick_weight = self._slotting()
         self.schedule = self._obstacle_schedule()
@@ -584,7 +588,15 @@ class Episode:
         return path
 
     def _free_chargers(self, robot: Robot) -> list[Cell]:
-        return [c for c in self.layout.chargers if c not in self.reserved_chargers and robot.avoid.get(c, -1) <= self.time]
+        """Chargers this robot could take now: not reserved, not still held by a robot that has not left the bay,
+        and not one it avoids."""
+        return [c for c in self.layout.chargers if c not in self.reserved_chargers and c not in self.occupied
+                and robot.avoid.get(c, -1) <= self.time]
+
+    def _queued(self, robot: Robot) -> bool:
+        """Waiting for a charger and able to take one: idle or on its way to a parking cell."""
+        return robot.charge_wait is not None and (
+            robot.state == 'idle' or (robot.state == 'moving' and robot.purpose == 'park'))
 
     def _go_charge(self, robot: Robot) -> None:
         robot.must_charge = True
@@ -592,11 +604,12 @@ class Episode:
             robot.charge_wait = self.time
         free = self._free_chargers(robot)
         # First come, first served: robots that have waited longer take the free chargers first.
-        ahead = sum(1 for r in self.robots if r is not robot and r.charge_wait is not None and r.state != 'dead'
-                    and (r.charge_wait, r.id) < (robot.charge_wait, robot.id))
+        # Only robots that could take one of these chargers count.
+        ahead = sum(1 for r in self.robots if r is not robot and self._queued(r)
+                    and (r.charge_wait, r.id) < (robot.charge_wait, robot.id) and set(self._free_chargers(r)) & set(free))
         if len(free) <= ahead:
             robot.state = 'idle'  # every charger is taken; try again next tick
-            if robot.cell in self.bays:
+            if robot.cell not in self.parking:
                 self._park(robot)
             return
         robot.charge_wait = None
@@ -606,9 +619,10 @@ class Episode:
         self._go(robot, charger, 'charge')
 
     def _park(self, robot: Robot) -> None:
-        """Leave a bay to wait in the nearest free aisle cell that is not a bay entrance, so that a robot waiting for
-        a charger does not shut a station."""
-        cells = [c for c in self.layout.aisles if c not in self.entrances and c not in self.occupied]
+        """Wait for a charger in the nearest free parking cell, so that a waiting robot does not shut a bay, stand on
+        a pick face or block the one-lane aisle."""
+        taken = {r.goal for r in self.robots if r.state == 'moving' and r.purpose == 'park'}
+        cells = [c for c in self.parking if c not in self.occupied and c not in taken and robot.avoid.get(c, -1) <= self.time]
         if cells:
             self._go(robot, min(cells, key=lambda c: self._manhattan(robot.cell, c)), 'park')
 
@@ -660,6 +674,9 @@ class Episode:
             self._go_charge(robot)
 
     def _move(self, robot: Robot) -> None:
+        if robot.purpose == 'park' and self._free_chargers(robot):
+            self._go_charge(robot)  # a charger came free on the way to the parking cell
+            return
         if robot.cell == robot.goal:
             self._arrive(robot)
             return
