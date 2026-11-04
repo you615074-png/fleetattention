@@ -506,9 +506,9 @@ def test_extreme_but_legal_settings_run(overrides):
 
 
 GOLDEN = {  # seed 0, half an hour: (questions, recoveries, delivered/h, supervisor low misses, incidents)
-    'cost_aware': (18, 1, 940.0, 0, 65),
-    'always_safe_reroute': (0, 0, 932.0, 4, 82),
-    'reference': (36, 1, 890.0, 0, 64),
+    'cost_aware': (16, 0, 956.0, 0, 68),
+    'always_safe_reroute': (0, 0, 940.0, 4, 86),
+    'reference': (36, 1, 906.0, 0, 61),
 }
 
 
@@ -905,21 +905,64 @@ def test_reaching_a_charger_after_finishing_first_gives_no_verdict():
 
 
 @pytest.mark.parametrize('taken, age, right', [
-    (False, 1.0, 'charge_now'), (True, 1.0, 'finish_task'), (True, 50.0, 'charge_now')])
+    (0, 1.0, 'charge_now'), (3, 1.0, 'charge_now'), (4, 1.0, 'finish_task'), (4, 50.0, 'charge_now')])
 def test_finishing_first_is_right_only_when_every_charger_is_taken_and_the_battery_lasts(taken, age, right):
     episode = Episode(Fixed(), 0, quiet(robots=1))
     robot = episode.robots[0]
     robot.battery, robot.age = 8.0, age  # the robot's estimate ignores its age: only the label sees it
-    if taken:
-        episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers})
+    episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers[:taken]})
     episode._assign(robot)
     incident = episode.incidents[0]
-    assert incident.obs.details['free_chargers'] == (0 if taken else len(episode.layout.chargers))
+    assert incident.obs.details['free_chargers'] == len(episode.layout.chargers) - taken
     assert incident.correct == right
 
 
-def test_the_charger_setting_keeps_that_many_bays():
+@pytest.mark.parametrize('cover, right', [(1.1, 'charge_now'), (1.4, 'finish_task')])
+def test_finishing_first_needs_the_margin(cover, right):
+    def raised(age):
+        episode = Episode(Fixed(), 0, quiet(robots=1))
+        robot = episode.robots[0]
+        robot.battery, robot.age = 8.0, age
+        episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers})
+        episode._assign(robot)  # the same seed gives the same task
+        return episode.incidents[0]
+    need = raised(1.0).obs.details['estimated_need']  # at nominal drain
+    assert raised(8.0 / (cover * need)).correct == right  # the battery covers `cover` times the true need
+
+
+def test_the_charger_setting_keeps_that_many_bays_and_walls_off_the_rest():
+    from fleetattention.layout import warehouse
+    full = warehouse()
     for n in (1, 4, 7):
-        assert len(Episode(Fixed(), 0, quiet(chargers=n)).layout.chargers) == n
+        layout = Episode(Fixed(), 0, quiet(chargers=n)).layout
+        assert len(layout.chargers) == n
+        assert set(full.chargers) - set(layout.chargers) <= layout.shelves
+        assert layout.aisles == full.aisles and layout.picks == full.picks
     with pytest.raises(ValueError):
         Episode(Fixed(), 0, quiet(chargers=8))
+
+
+def test_a_robot_waiting_for_a_charger_leaves_the_station_bay():
+    episode = Episode(Fixed(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    place(episode, robot, episode.layout.stations[0])
+    episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers})
+    robot.battery = 3.0
+    for _ in range(20):
+        episode.tick()
+    assert robot.cell not in episode.bays and robot.cell not in episode.entrances and robot.charger is None
+
+
+def test_chargers_go_to_the_robot_that_has_waited_longest():
+    episode = Episode(Fixed(), 0, quiet(robots=2))
+    first, second = episode.robots
+    episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers})
+    second.battery = first.battery = 3.0
+    episode._go_charge(second)
+    episode.time += 5
+    episode._go_charge(first)
+    del episode.reserved_chargers[episode.layout.chargers[0]]
+    episode._go_charge(first)   # the lower id asks first, but the other robot has waited longer
+    assert first.charger is None
+    episode._go_charge(second)
+    assert second.charger == episode.layout.chargers[0]

@@ -138,7 +138,10 @@ def main(argv: list[str] | None = None) -> None:
         config = replace(Config(), **changes)
     except (TypeError, ValueError) as error:
         parser.error(str(error))
-    room = len(warehouse().aisles)
+    try:
+        room = len(warehouse(chargers=config.chargers).aisles)
+    except ValueError as error:
+        parser.error(str(error))
     if config.robots > room:
         parser.error(f'{config.robots} robots do not fit in the {room} aisle cells of the warehouse')
     names = {'run': [getattr(args, 'supervisor', '')], 'sweep': SWEEP, 'ablate': ABLATE}[args.command]

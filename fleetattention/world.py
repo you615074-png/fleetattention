@@ -227,6 +227,8 @@ class Robot:
     deadlock_cooldown: int = 0
     low_raised: bool = False
     must_charge: bool = False
+    charge_wait: int | None = None
+    """When the robot started waiting for a free charger, if it is waiting."""
     avoid: dict[Cell, int] = field(default_factory=dict)
     attempts: dict[Any, int] = field(default_factory=dict)
 
@@ -285,6 +287,7 @@ class Episode:
             self.robots.append(Robot(i, cell, setup.uniform(40, 100), setup.uniform(*config.age_range)))
             self.occupied[cell] = i
         self.bays = frozenset(self.layout.stations) | frozenset(self.layout.chargers)
+        self.entrances = frozenset(c for bay in self.bays for c in self.layout.neighbors(bay))
         """Dead ends, entered from one side: robots never step aside into one and queue outside a full one."""
         self.pick_weight = self._slotting()
         self.schedule = self._obstacle_schedule()
@@ -353,8 +356,7 @@ class Episode:
         if cfg.obstacles_per_hour == 0:
             return []
         # Nothing is left in a bay's entrance, the only way out of it.
-        entrances = {c for bay in self.bays for c in self.layout.neighbors(bay)}
-        aisles = [cell for cell in self.layout.aisles if cell not in entrances]
+        aisles = [cell for cell in self.layout.aisles if cell not in self.entrances]
         human = [cell for cell in aisles if self.layout.in_human_zone(cell)]
         elsewhere = [cell for cell in aisles if cell not in self.pick_weight]
         picks, weights = zip(*self.pick_weight.items())
@@ -581,16 +583,34 @@ class Episode:
             path = self.layout.path(robot.cell, goal, self._blocked_for(robot, own_avoid=False))
         return path
 
+    def _free_chargers(self, robot: Robot) -> list[Cell]:
+        return [c for c in self.layout.chargers if c not in self.reserved_chargers and robot.avoid.get(c, -1) <= self.time]
+
     def _go_charge(self, robot: Robot) -> None:
         robot.must_charge = True
-        free = [c for c in self.layout.chargers if c not in self.reserved_chargers and robot.avoid.get(c, -1) <= self.time]
-        if not free:
+        if robot.charge_wait is None:
+            robot.charge_wait = self.time
+        free = self._free_chargers(robot)
+        # First come, first served: robots that have waited longer take the free chargers first.
+        ahead = sum(1 for r in self.robots if r is not robot and r.charge_wait is not None and r.state != 'dead'
+                    and (r.charge_wait, r.id) < (robot.charge_wait, robot.id))
+        if len(free) <= ahead:
             robot.state = 'idle'  # every charger is taken; try again next tick
+            if robot.cell in self.bays:
+                self._park(robot)
             return
+        robot.charge_wait = None
         charger = min(free, key=lambda c: abs(c[0] - robot.cell[0]) + abs(c[1] - robot.cell[1]))
         self.reserved_chargers[charger] = robot.id
         robot.charger = charger
         self._go(robot, charger, 'charge')
+
+    def _park(self, robot: Robot) -> None:
+        """Leave a bay to wait in the nearest free aisle cell that is not a bay entrance, so that a robot waiting for
+        a charger does not shut a station."""
+        cells = [c for c in self.layout.aisles if c not in self.entrances and c not in self.occupied]
+        if cells:
+            self._go(robot, min(cells, key=lambda c: self._manhattan(robot.cell, c)), 'park')
 
     def _release_pick(self, robot: Robot) -> None:
         if robot.pick is not None and self.reserved_picks.get(robot.pick) == robot.id:
@@ -784,6 +804,8 @@ class Episode:
             robot.state, robot.timer, robot.on_timer = 'working', self.time + self.cfg.pick_time, 'picked'
         elif robot.purpose == 'drop':
             robot.state, robot.timer, robot.on_timer = 'working', self.time + self.cfg.drop_time, 'dropped'
+        elif robot.purpose == 'park':
+            robot.state = 'idle'
         else:
             robot.state, robot.timer = 'charging', self.time + self.cfg.docking_time
             if robot.finish_incident is not None:
@@ -851,7 +873,7 @@ class Episode:
         if robot.finish_incident is not None:
             incident = self.incidents[robot.finish_incident]
             # Running out after finishing the task is the miss of whoever chose to finish, unless finishing was labelled
-            # right (never by default: see `_raise_low_battery`), when it is nobody's misjudgement.
+            # right (see `_raise_low_battery`), when it is nobody's misjudgement.
             self._miss('high', incident.by if incident.correct == 'charge_now' else 'system', incident)
             self._close(incident, False, 'high')
             robot.finish_incident = None
@@ -859,7 +881,7 @@ class Episode:
             self._miss('high', 'system', None)
         self._abandon_task(robot)
         self._release_charger(robot)
-        robot.state, robot.battery = 'dead', 0.0
+        robot.state, robot.battery, robot.charge_wait = 'dead', 0.0, None
         self.stats['recoveries'] += 1
         self._log('dead', robot=robot.id, cell=robot.cell)
         self._enqueue(Job('recovery', robot.id))
@@ -907,7 +929,7 @@ class Episode:
         need += min(self._distance(robot, robot.drop, charger) for charger in self.layout.chargers)
         estimated = need * self.cfg.drain
         margin = robot.battery - estimated
-        free = sum(c not in self.reserved_chargers for c in self.layout.chargers)
+        free = len(self._free_chargers(robot))
         # A robot charges to full either way, so charging first costs nothing while a charger is free. With every
         # charger taken it stands idle until one frees up: then finishing the task first is right if the battery
         # covers it at the robot's true drain, with a margin for detours. Labelled on what is known now.
