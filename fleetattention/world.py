@@ -67,12 +67,10 @@ class Config:
     """An idle robot at or below this battery goes to charge without asking."""
     low_battery_at: float = 9.0
     """An idle robot below this battery raises an incident before its next task: one more task, or charge now?"""
-    battery_margin: float = 1.25
-    """`finish_task` counts as right when the battery covers the planned route at the true drain times this."""
     charge_rate: float = .5
     docking_time: int = 60
-    """Seconds of every charging session spent docking and undocking, whatever the battery: charging more often than
-    needed costs robot time."""
+    """Seconds of every charging session spent docking and undocking, whatever the battery. A fixed cost per session:
+    charging at the first warning adds only a few per cent more sessions."""
     human_accuracy: float = .97
     human_median: float = 20.0
     """Median seconds for the person to answer a question; answer times are log-normal."""
@@ -844,8 +842,8 @@ class Episode:
     def _die(self, robot: Robot) -> None:
         if robot.finish_incident is not None:
             incident = self.incidents[robot.finish_incident]
-            # Finishing the task was the right call when the battery, at its true drain, covered the planned route;
-            # running out anyway (on detours and waits) is then nobody's misjudgement.
+            # Running out after finishing the task is the miss of whoever chose to finish, unless finishing was labelled
+            # right (never by default: see `_raise_low_battery`), when it is nobody's misjudgement.
             self._miss('high', incident.by if incident.correct == 'charge_now' else 'system', incident)
             self._close(incident, False, 'high')
             robot.finish_incident = None
@@ -900,11 +898,11 @@ class Episode:
         need = self._distance(robot, robot.cell, robot.pick) + self._distance(robot, robot.pick, robot.drop)
         need += min(self._distance(robot, robot.drop, charger) for charger in self.layout.chargers)
         estimated = need * self.cfg.drain
-        # Ground truth uses the hidden age, with a margin for detours on the way.
-        sufficient = robot.battery > need * self.cfg.drain * robot.age * self.cfg.battery_margin
         margin = robot.battery - estimated
+        # Charging first is always right: a robot charges to full either way, so finishing the task first gains no
+        # throughput, and it risks a flat battery (the robot's estimate ignores its age).
         self._raise(robot, 'low_battery', robot.cell, 1, 'finish_task' if margin > 0 else 'charge_now',
-                    .5 + .5 * math.tanh(abs(margin) / 2), 'finish_task' if sufficient else 'charge_now',
+                    .5 + .5 * math.tanh(abs(margin) / 2), 'charge_now',
                     {'battery': round(robot.battery, 2), 'estimated_need': round(estimated, 2)})
 
     def _raise_scan(self, robot: Robot, attempt: int) -> None:
@@ -1017,7 +1015,7 @@ class Episode:
                 robot.incident, robot.must_charge = None, True
                 self._go(robot, robot.pick, 'pick')
             else:
-                # Charging first is never a miss: what it costs is robot time, an extra docking and the trip.
+                # Charging first is never a miss, and costs next to nothing: the robot charges to full either way.
                 self._close(incident, None)
                 self._abandon_task(robot)
                 self._go_charge(robot)

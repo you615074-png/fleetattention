@@ -13,22 +13,22 @@ Raw numbers are in `results/` (not committed; rerun to reproduce, except the sec
 
 | supervisor | interrupt/h | harm/h | delivered/h | critical/ep | high/ep | medium/ep | low/ep | person busy | wait s | front |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|:-:|
-| always_ask | 89.0 ± 1.5 | 0.0 | 901 ± 16 | 0.0 | 0.0 | 0.0 | 0.0 | 77% | 108 | |
-| threshold@0.99 | 84.1 ± 2.0 | 0.0 | 928 ± 18 | 0.0 | 0.0 | 0.0 | 0.0 | 73% | 96 | |
-| threshold@0.95 | 65.8 ± 2.0 | 8.8 ± 1.9 | 959 ± 14 | 0.0 | 1.6 | 1.5 | 0.0 | 62% | 92 | |
-| threshold@0.9 | 56.2 ± 1.8 | 46.2 ± 8.5 | 927 ± 16 | 0.2 | 6.9 | 3.4 | 0.1 | 70% | 158 | |
-| threshold@0.85 | 46.0 ± 0.9 | 38.1 ± 3.7 | 964 ± 15 | 0.0 | 7.1 | 5.2 | 0.0 | 64% | 122 | |
-| threshold@0.8 | 39.6 ± 1.3 | 60.3 ± 9.4 | 942 ± 13 | 0.1 | 10.4 | 6.6 | 0.0 | 71% | 174 | |
-| threshold@0.7 | 26.4 ± 0.8 | 98.5 ± 14.9 | 954 ± 11 | 0.6 | 12.5 | 11.9 | 0.1 | 68% | 241 | |
-| threshold@0.6 | 19.1 ± 0.7 | 146.9 ± 14.9 | 975 ± 13 | 1.2 | 15.5 | 18.7 | 0.2 | 71% | 241 | |
-| never_ask | 8.6 ± 0.6 | 233.2 ± 20.3 | 996 ± 13 | 2.7 | 16.8 | 28.2 | 0.4 | 66% | 0 | |
+| always_ask | 91.2 ± 1.6 | 0.0 | 897 ± 15 | 0.0 | 0.0 | 0.0 | 0.0 | 79% | 104 | |
+| threshold@0.99 | 85.6 ± 2.1 | 0.6 ± 0.5 | 931 ± 15 | 0.0 | 0.1 | 0.1 | 0.0 | 73% | 92 | |
+| threshold@0.95 | 68.2 ± 2.5 | 13.2 ± 1.5 | 951 ± 12 | 0.0 | 2.5 | 1.5 | 0.0 | 66% | 95 | |
+| threshold@0.9 | 57.5 ± 1.6 | 45.2 ± 9.2 | 933 ± 20 | 0.2 | 6.7 | 3.4 | 0.1 | 69% | 147 | |
+| threshold@0.85 | 46.5 ± 1.4 | 46.6 ± 6.7 | 961 ± 14 | 0.1 | 7.8 | 5.2 | 0.0 | 64% | 124 | |
+| threshold@0.8 | 39.5 ± 1.3 | 60.3 ± 9.8 | 946 ± 15 | 0.1 | 10.4 | 6.6 | 0.0 | 70% | 164 | |
+| threshold@0.7 | 26.4 ± 0.8 | 101.0 ± 14.9 | 954 ± 11 | 0.6 | 13.0 | 11.9 | 0.1 | 68% | 241 | |
+| threshold@0.6 | 19.1 ± 0.7 | 148.9 ± 15.3 | 975 ± 13 | 1.2 | 15.9 | 18.7 | 0.2 | 71% | 241 | |
+| never_ask | 8.6 ± 0.6 | 234.2 ± 20.5 | 996 ± 13 | 2.7 | 17.0 | 28.2 | 0.4 | 66% | 0 | |
 | always_safe | 0.3 ± 0.1 | 3.5 ± 0.4 | 860 ± 18 | 0.0 | 0.0 | 0.0 | 14.0 | 2% | 0 | * |
 | always_safe_reroute | 0.5 ± 0.1 | 5.1 ± 0.5 | 1036 ± 8 | 0.0 | 0.0 | 0.0 | 20.3 | 4% | 0 | * |
 | patient | 0.8 ± 0.1 | 4.5 ± 0.5 | 1026 ± 8 | 0.0 | 0.0 | 0.0 | 18.0 | 6% | 0 | * |
 | cost_aware | 22.9 ± 0.8 | 0.0 | 1036 ± 9 | 0.0 | 0.0 | 0.0 | 0.0 | 20% | 34 | * |
 | motion_aware | 22.1 ± 0.9 | 0.0 | 1035 ± 9 | 0.0 | 0.0 | 0.0 | 0.0 | 19% | 32 | * |
 | staged | 18.1 ± 0.6 | 0.0 | 1029 ± 7 | 0.0 | 0.0 | 0.0 | 0.0 | 16% | 33 | * |
-| **reference** | 62.5 ± 2.7 | 2.5 ± 0.8 | 992 ± 7 | 0.0 | 0.4 | 1.0 | 0.2 | 57% | 52 | |
+| **reference** | 69.2 ± 1.7 | 0.5 ± 0.2 | 975 ± 8 | 0.0 | 0.0 | 1.0 | 0.0 | 65% | 58 | |
 
 ± is the standard error over seeds. *front* marks the Pareto front on all three axes (fewer interruptions, less
 harm, more deliveries), compared on means; neighbours on it often differ by less than their errors. Interruptions
@@ -40,10 +40,10 @@ lines per hour.
 
 ## What it shows
 
-1. **Asking about everything does not work.** The person is busy 77% of the time, a question waits almost two
+1. **Asking about everything does not work.** The person is busy 79% of the time, a question waits almost two
    minutes, and the fleet delivers 10% less than when nobody asks, because robots stand still while their questions
    wait. Following the robot's suggestion without asking (`never_ask`) is far worse: it drives into people, picks
-   wrong items and runs batteries flat (233 harm an hour).
+   wrong items and runs batteries flat (234 harm an hour).
 2. **The trade-off is mostly about scan failures.** `always_safe_reroute` drives around every obstacle, rescans
    until the fleet gives the item up, and charges at the first battery warning. It interrupts less than once an
    hour, never drives into anything, and delivers as much as any supervisor. Its price is 10.2 order lines an hour
@@ -59,12 +59,12 @@ lines per hour.
    (`always_safe`) loses none, but costs 17% of the deliveries. `motion_aware`, which waits instead of asking when
    the obstacle on the pick face moves, and `staged`, which waits three times first, ask about obstacles 1.4 and 0.9
    times an hour, against 2.2 for `cost_aware`.
-4. **On low batteries, caution costs almost nothing.** Every charging session includes a minute of docking, but a
-   robot charges to full either way, so charging at the first warning only moves the session earlier: the
-   supervisors that always do so deliver as much as any. Finishing the task on the robot's own estimate
-   (`never_ask`) runs a battery flat 8.4 times an hour, because older robots drain up to 1.8 times faster than the
-   estimate assumes. This kind therefore tests only whether a supervisor wastes attention or takes needless risks
-   on it: `reference` asks about low batteries 21 times an hour.
+4. **Low batteries have no trade-off: charging first is always right.** A robot charges to full either way, so
+   charging at the first warning only moves the session earlier; it adds about 2% more docking sessions and costs
+   no measurable throughput. Finishing the task first gains nothing and risks a flat battery: on the robot's own
+   estimate, which ignores that older robots drain up to 1.8 times faster, `never_ask` runs 8.5 batteries flat an
+   hour by its own decision. So this kind tests only whether a supervisor wastes attention on it or takes the
+   robot's word: `reference` asks about low batteries 29 times an hour.
 5. **So the answer depends on the price of attention, which is the point of the benchmark.** Under the cost
    profiles in `metrics.PROFILES`, the supervisors that ask where caution is expensive are best where attention is
    cheap (a dedicated operator), and the two that never ask are best under the balanced and scarce profiles, where a
@@ -76,13 +76,15 @@ lines per hour.
    `cost_aware`, 5 for `staged`).
 6. **Trusting the robot's confidence does not pay here.** Every threshold in the grid is dominated, no better on
    any axis and worse on at least one, by `cost_aware`, which ignores the confidence. Harm does not even fall
-   steadily as the threshold rises: these 10 seeds put 0.85 below 0.9, within the large errors of rare misses.
-7. **The reference supervisor is dominated by `cost_aware`, `motion_aware` and `staged`**: 62.5 against 18 to 23
-   interruptions an hour, 2.5 against 0 harm, 992 against 1029 to 1036 deliveries. Of its 1238 questions over the 10
-   seeds, 42% are about kinds it never learns to trust (scan failures, for example: the scanner is right at most 79%
-   of the time, short of the 95% target), 39% about incidents below its learned threshold, 17% come from the shadow
-   phase, and the rest are escalations and audits (the `reported_reason_*` columns of the CSV). Calibrating trust
-   costs questions that a cheap cautious action makes unnecessary.
+   steadily as the threshold rises: these 10 seeds give 0.9 and 0.85 the same harm, within the large errors of rare
+   misses.
+7. **The reference supervisor is dominated by `cost_aware`, `motion_aware` and `staged`**: 69.2 against 18 to 23
+   interruptions an hour, 0.5 against 0 harm, 975 against 1029 to 1036 deliveries. Of its 1367 questions over the 10
+   seeds, 64% are about kinds it never learns to trust (scan failures: the scanner is right at most 79% of the time,
+   short of the 95% target; and low batteries, where the robot suggests finishing although charging is right), 18%
+   about incidents below its learned threshold, 15% come from the shadow phase, and the rest are escalations and
+   audits (the `reported_reason_*` columns of the CSV). Calibrating trust costs questions that a cheap cautious
+   action makes unnecessary.
 8. **There is room.** The open challenge is to fail fewer lines than the never-asking supervisors with fewer
    questions than the ones that ask. `staged`, three plain rules a reviewer proposed, asks 21% less than
    `cost_aware` (18.1 interruptions an hour, 16.8 questions about scans) for 7 fewer deliveries an hour, and is on
@@ -95,43 +97,42 @@ difference to `reference` on the same seeds with a 95% interval (t distribution,
 
 | variant | interrupt/h | harm/h | delivered/h | Δ interrupt/h | Δ harm/h | Δ delivered/h |
 |---|---:|---:|---:|---:|---:|---:|
-| reference | 62.5 ± 2.7 | 2.5 ± 0.8 | 992 ± 7 | | | |
-| one shared threshold and target instead of one per kind | 63.8 ± 1.3 | 4.8 ± 1.8 | 971 ± 9 | +1.4 [-5.0, +7.7] | +2.3 [-3.1, +7.7] | **-20.6 [-34.7, -6.5]** |
-| no joining of questions about the same cause | 61.2 ± 2.1 | 5.0 ± 1.3 | 983 ± 9 | -1.2 [-8.1, +5.7] | +2.5 [-1.7, +6.6] | -9.3 [-22.8, +4.2] |
-| no gate (may drive through motion or the human zone) | 59.3 ± 1.5 | 14.1 ± 6.2 | 991 ± 9 | -3.1 [-8.4, +2.1] | +11.6 [-2.3, +25.5] | -0.7 [-10.3, +9.0] |
-| no safe default when the person is busy | 66.3 ± 2.5 | 2.6 ± 1.0 | 973 ± 10 | **+3.9 [+1.5, +6.3]** | +0.1 [-2.4, +2.5] | **-19.4 [-32.8, -5.9]** |
-| deadlocks calibrated like other kinds instead of always yielding | 62.3 ± 2.2 | 10.0 ± 5.7 | 985 ± 9 | -0.1 [-3.2, +2.9] | +7.5 [-6.4, +21.3] | -6.9 [-16.0, +2.2] |
+| reference | 69.2 ± 1.7 | 0.5 ± 0.2 | 975 ± 8 | | | |
+| one shared threshold and target instead of one per kind | 72.5 ± 0.9 | 2.6 ± 1.1 | 967 ± 8 | +3.4 [-0.4, +7.2] | +2.1 [-0.6, +4.7] | -8.2 [-25.4, +9.1] |
+| no joining of questions about the same cause | 71.7 ± 1.3 | 0.4 ± 0.1 | 983 ± 9 | +2.5 [-1.5, +6.6] | -0.1 [-0.3, +0.1] | +7.8 [-12.0, +27.5] |
+| no gate (may drive through motion or the human zone) | 69.5 ± 1.4 | 15.4 ± 10.6 | 983 ± 8 | +0.3 [-3.9, +4.6] | +14.9 [-9.1, +39.0] | +8.0 [-7.1, +23.1] |
+| no safe default when the person is busy | 74.5 ± 1.3 | 0.5 ± 0.1 | 950 ± 9 | **+5.4 [+1.7, +9.1]** | -0.1 [-0.3, +0.2] | **-24.6 [-37.7, -11.4]** |
+| deadlocks calibrated like other kinds instead of always yielding | 70.9 ± 1.6 | 0.6 ± 0.2 | 972 ± 9 | +1.8 [-1.9, +5.4] | +0.1 [-0.2, +0.4] | -2.8 [-16.1, +10.6] |
 
 - **The safe default when the person is busy** is the one feature with a clear effect in every version of this
-  page: without it the reference asks 3.9 more questions an hour, questions wait longer (67 s instead of 52 s), and
-  the fleet delivers 19 fewer lines an hour.
-- **Per-kind calibration** keeps 21 deliveries an hour.
-- **The gate** shows the largest mean increase in harm without it, from a few critical misses (0.2 an episode);
+  page: without it the reference asks 5.4 more questions an hour, questions wait longer (74 s instead of 58 s), and
+  the fleet delivers 25 fewer lines an hour.
+- **The gate** shows the largest mean increase in harm without it, from a few critical misses (0.3 an episode);
   the interval includes zero.
-- **Joining questions** and **always yielding in deadlocks** show no effect these seeds can tell apart from zero.
-  Joining is rare (46 joins against 1238 questions), and so are deadlocks (about 2 an hour).
-- Earlier versions of this page found clear effects of the gate on harm and of always yielding on deliveries.
-  Changes to the fleet's rules between versions moved them, which shows how roughly 10 seeds rank these features.
+- **Per-kind calibration**, **joining questions** and **always yielding in deadlocks** show no effect these seeds
+  can tell apart from zero. Joining is rare (39 joins against 1367 questions), and so are deadlocks (about 2 an
+  hour).
+- Earlier versions of this page found clear effects of the gate on harm, of always yielding on deliveries and of
+  per-kind calibration. Changes to the fleet's rules between versions moved them, which shows how roughly 10 seeds
+  rank these features.
 
 These are differences in this simulator with these settings, not general effects.
 
 ## On secret seeds, with every supervisor isolated
 
 `--secret-seeds` runs each supervisor in its own process on seeds derived from a random key that was never written
-down. The picture is the same within the errors: `cost_aware` 26.4 / 0 / 1060 (interrupt/h, harm/h, delivered/h),
-`motion_aware` 26.1 / 0 / 1058, `staged` 21.0 / 0 / 1042, `always_safe_reroute` 0.3 / 5.8 / 1060, `patient`
-0.3 / 5.3 / 1050, `reference` 64.2 / 1.5 / 1004. The front is `always_safe`, `always_safe_reroute`, `patient`,
-`cost_aware`, `motion_aware` and `staged`. The best under the three profiles are `cost_aware` (ahead of
-`motion_aware` by +0.1 [-0.2, +0.3]), `patient` and `patient` (ahead of `always_safe_reroute` by +0.0 [-0.4, +0.4]
-and +0.0 [-0.5, +0.5]).
-Since the key is gone, this run cannot be repeated exactly; rerunning it draws new seeds and should give the same
-picture.
+down. The picture is the same within the errors. One such run gave `cost_aware` 27.4 / 0 / 1062 (interrupt/h,
+harm/h, delivered/h), `motion_aware` 27.1 / 0 / 1063, `staged` 21.6 / 0 / 1055, `always_safe_reroute`
+0.4 / 6.3 / 1061, `patient` 0.3 / 5.6 / 1049 and `reference` 71.7 / 0.6 / 994. The same groups win as on the public
+seeds: one of `cost_aware`, `motion_aware` and `staged` where attention is cheap, one of `patient` and
+`always_safe_reroute` under the other two profiles. Which member of a group comes first changes from key to key,
+since the seeds do not tell them apart. A secret run cannot be repeated exactly; rerunning it draws new seeds.
 
 ## Caveats
 
 - **Everything is simulated.** Every rate, accuracy, duration and cost is an assumption, in `Config` and `metrics`.
   Different assumptions move every number.
-- **The benchmark was changed after eight rounds of review.** In the first version caution cost nothing; in the
+- **The benchmark was changed after ten rounds of review.** In the first version caution cost nothing; in the
   second, robots rescanned damaged labels forever and queued behind them, which made caution look far more
   expensive than it is; the third fixed how misses are attributed and how the fleet treats an obstacle it already
   knows; the fourth fixed robots trapping each other at station bays and in the one-lane top aisle, which had cost
@@ -142,13 +143,15 @@ picture.
   a third), and robots shut in a bay by an obstacle in its entrance; the seventh fixed a robot raising the same
   obstacle every second when rerouting left it no way out, two robots shuffling around each other for minutes, and
   robots shut in a bay giving their order line up every 15 seconds; the eighth let the fleet take back a question
-  whose obstacle has gone, stopped the no-headway rule cutting detours short, and added docking time to charging.
-  (For a while, charging first when the battery would have lasted counted as a failed line. That was reverted:
-  the simulator loses no throughput by it, so it was a price on nothing.) Obstacles on pick faces, damaged labels, a fleet limit on rescans
+  whose obstacle has gone and stopped the no-headway rule cutting detours short; the ninth added docking time to
+  charging and made withdrawing a question safe with joined incidents; the tenth made charging first the right
+  action on low batteries, as the simulator's costs say it is. (For a while, charging first when the battery would
+  have lasted counted as a failed line. That was reverted: the simulator loses no throughput by it, so it was a
+  price on nothing.) Obstacles on pick faces, damaged labels, a fleet limit on rescans
   and throughput as an axis came out of those reviews. They are plausible features of real warehouses, but they
   were chosen knowing what they would change, and the conclusions above depend on them. With no obstacles on pick
   faces and no damaged labels (the fourth command above), `always_safe_reroute` fails 0.8 lines an hour
-  (0.3 / 0.4 / 1045, against `staged`'s 4.8 / 0 / 1042 and `cost_aware`'s 11.7 / 0 / 1038) and is the best
+  (0.3 / 0.4 / 1045, against `staged`'s 4.8 / 0.5 / 1042 and `cost_aware`'s 11.7 / 0 / 1038) and is the best
   supervisor under all three cost profiles; `patient` scores exactly the same, because its rule then never
   applies.
 - **The same author wrote the simulator and almost every supervisor**, including `cost_aware`, `patient` and
@@ -161,7 +164,12 @@ picture.
   episodes, or start processes that leave its process group and outlive it. Scores from untrusted
   code need an OS sandbox around the run. On public seeds a supervisor can recognise the seed and simulate the
   episode itself (a reviewer's attempt cut interruptions by 28%), which is why comparisons use secret seeds.
-- **Some losses count twice.** A needlessly failed line is a low miss and also a delivery that did not happen; a
+- **Charging is simple.** It runs at a constant 0.5% a second (a full charge in about three minutes) after a
+  minute of docking, which lowers every supervisor's deliveries by about 2%. Charge-rate taper, partial charging
+  and battery wear are not modelled, and with seven chargers for 24 robots a robot almost never waits for one (at
+  36 robots it would). Any of these could give early charging a real cost; the conclusion that low batteries hold
+  no trade-off depends on their absence.
+- **Some losses may count twice.** A needlessly failed line is a low miss and may also show as fewer deliveries; a
   wrong pick is a medium miss and is not counted as delivered.
 - **The "right" action is a label, not an oracle.** It is fixed when an incident is raised, from the truth at that
   moment, and it is the best action as far as the simulator models costs.

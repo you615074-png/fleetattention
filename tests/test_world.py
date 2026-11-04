@@ -495,7 +495,7 @@ def test_extreme_but_legal_settings_run(overrides):
 GOLDEN = {  # seed 0, half an hour: (questions, recoveries, delivered/h, supervisor low misses, incidents)
     'cost_aware': (17, 1, 988.0, 0, 68),
     'always_safe_reroute': (0, 0, 990.0, 5, 89),
-    'reference': (41, 0, 938.0, 0, 63),
+    'reference': (37, 1, 896.0, 0, 73),
 }
 
 
@@ -813,3 +813,29 @@ def test_when_the_asked_about_obstacle_goes_the_joined_incidents_go_with_the_que
     assert 1 not in episode.questions and episode.stats['withdrawn'] == 1
     assert not episode.incidents[1].open and not episode.incidents[2].open and episode.incidents[2].question is None
     assert [i.obs.target for i in episode.incidents.values() if i.open and i.obs.robot == 2] == [(21, 3)]
+
+
+def test_two_robots_asking_about_one_obstacle_that_goes_lose_the_question_together():
+    class AskThenJoin(Supervisor):
+        name = 'ask_then_join'
+
+        def decide(self, obs, ctx):
+            return Decision.join(ctx.pending[-1].id) if len(ctx.pending) > 1 else Decision.ask()
+
+    episode = Episode(AskThenJoin(), 0, quiet(robots=3, human_median=10_000, human_spread=0))
+    busy, a, b = episode.robots
+    stays = Obstacle(0, (5, 3), 'person', 10_000)
+    goes = Obstacle(1, (11, 3), 'person', 5)
+    for obstacle in (stays, goes):
+        episode.obstacles[obstacle.id], episode.obstacle_cells[obstacle.cell] = obstacle, obstacle
+    # The first question keeps the person busy; a and b, on either side of one obstacle, share the second.
+    for robot, cell, obstacle in ((busy, (4, 3), stays), (a, (10, 3), goes), (b, (12, 3), goes)):
+        place(episode, robot, cell)
+        episode._go(robot, (cell[0] + 2 if robot is not b else cell[0] - 2, cell[1]), 'drop')
+        episode._raise_obstacle(robot, obstacle)
+        episode._decide_new()
+    assert episode.questions[1].incidents == [1, 2]
+    for _ in range(6):
+        episode.tick()
+    assert list(episode.questions) == [0] and episode.stats['withdrawn'] == 1
+    assert a.state != 'incident' and b.state != 'incident'

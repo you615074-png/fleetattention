@@ -78,7 +78,7 @@ truth directly (through the call stack, for example).
 | Kind | Actions | What makes it hard |
 | --- | --- | --- |
 | `obstacle` | `proceed`, `reroute`, `wait` | A box, a person or a sensor ghost. Driving into a person is a **critical** miss, into a box a medium one. Several robots meet the same obstacle. In an aisle, driving around is cheap and right for anything but a ghost; on the pick face the robot is heading to (`at_goal`), rerouting gives the order line up, which is a **low** miss unless it was a box. Waiting for a ghost or a box can take many minutes. |
-| `low_battery` | `finish_task`, `charge_now` | The robot estimates with its nominal drain, but older robots drain up to 1.8x faster. Running out after a wrong `finish_task` is a **high** miss. Charging first is never a miss; it costs a docking (a minute) and the trip. |
+| `low_battery` | `finish_task`, `charge_now` | The robot estimates with its nominal drain, but older robots drain up to 1.8x faster. `charge_now` is always right: a robot charges to full either way, so finishing first gains nothing, and running out after it is a **high** miss. Every charging session starts with a minute of docking, whenever it happens. |
 | `scan_failure` | `pick_anyway`, `rescan`, `skip` | The scanner is overconfident: its guess is right about 20 points less often than it claims. Half the failures are damaged labels that no rescan will read; after three failed rescans the fleet skips the line. A wrong pick is a **medium** miss; skipping a line whose guess was right, or that a rescan could have read, is a **low** one. A person can identify any item. |
 | `deadlock` | `yield`, `wait` | Never harmful whatever is chosen; asking about it only wastes attention and time. Rare (one to five an hour), since the fleet settles most standoffs itself; it tests interruptions and throughput, not harm. |
 
@@ -126,6 +126,8 @@ Run your own as `module:Class`, with `--secret-seeds` for scores you want to com
   lines the fleet manager gives up when it sends a robot to another goal (`replanned`). Orders are an endless
   stream, so a robot that drops a line simply takes the next one; only the needless failures above count as harm,
   and lines dropped by the traffic rules are no one's miss.
+- `withdrawn`: questions the fleet took back because the obstacle they were about went away before anyone
+  answered. A withdrawn question still counts in `interrupt/h`: it was raised, and the person may have read it.
 - The Pareto front marks the supervisors no other one beats on all three axes. It compares means; check the
   standard errors before reading much into a close call. Cost profiles in `metrics.PROFILES` turn the three axes into
   one cost for a few example sites.
