@@ -735,6 +735,11 @@ class Episode:
                 return
         obstacle = self.obstacle_cells.get(nxt)
         if obstacle and robot.passing != obstacle.id and not (obstacle.revealed and obstacle.cls == 'ghost'):
+            if robot.purpose == 'park' and nxt == robot.goal:
+                # Something stands on the parking cell: wait somewhere else, nobody needs to be asked.
+                robot.avoid[nxt] = self.time + self.cfg.replan_avoid
+                self._park(robot)
+                return
             self._raise_obstacle(robot, obstacle)
             return
         other = self.occupied.get(nxt)
@@ -938,7 +943,7 @@ class Episode:
         rng, cls, cfg = self._rng('sense', obstacle.id, robot.id, attempt), obstacle.cls, self.cfg
         predicted = cls if rng.random() < cfg.classifier_accuracy[cls] else rng.choice([c for c in ('box', 'person', 'ghost') if c != cls])
         confidence = rng.betavariate(8, 2) if predicted == cls else rng.betavariate(5, 3)
-        at_goal = obstacle.cell == robot.goal
+        at_goal = obstacle.cell == robot.goal and robot.purpose == 'pick'  # on the pick face it is heading to
         details = {'predicted': predicted, 'motion': rng.random() < cfg.motion_detected[cls], 'at_goal': at_goal}
         self._raise(robot, 'obstacle', obstacle.cell, attempt, right_action(predicted, at_goal), confidence,
                     right_action(cls, at_goal), details, {'obstacle': obstacle, 'at_goal': at_goal})

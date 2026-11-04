@@ -110,9 +110,9 @@ class Answer:
 class Outcome:
     """What became observable after an autonomous action.
 
-    `ok` is True when the outcome confirmed the action (the obstacle walked away while the robot waited, the item
+    `ok` is True when the outcome confirmed the action (driving past what turned out to be a ghost, the item
     delivered was the right one), False when it showed the action was wrong, and None when nothing observable says
-    either way (a detour, a charge, a task cancelled before it finished). `severity` is set for a miss.
+    either way (waiting, a detour, a charge, a task cancelled before it finished). `severity` is set for a miss.
     """
     action: str
     ok: bool | None

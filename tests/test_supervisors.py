@@ -214,3 +214,11 @@ def test_reference_audits_a_share_of_what_it_would_do_alone():
         sup = calibrated()
         sup.audit = audit
         assert sup.decide(obs(), IDLE).type == expected
+
+
+def test_cost_charges_attention_and_harm_and_credits_deliveries():
+    prices = {'interruption': .5, 'delivery': .05}
+    row = {'interruptions_per_hour': 10, 'harm_per_hour': 2, 'delivered_per_hour': 100}
+    assert abs(cost(row, prices) - (5 + 2 - 5)) < 1e-9
+    more = dict(row, delivered_per_hour=120)
+    assert cost(more, prices) < cost(row, prices)

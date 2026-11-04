@@ -69,8 +69,8 @@ truth directly (through the call stack, for example).
   stays on it, or a robot has made no headway towards it for a minute and a half; giving an item up after three
   failed rescans. A head-on standoff these rules cannot settle reaches the supervisor, as a deadlock. The rules are
   deliberately plain, and traffic still costs throughput: robots queue, detour and sometimes give an order line up.
-- A simulated person answers one question at a time: about 20 seconds per answer, 10 seconds more when questions
-  arrive back to back, right 97% of the time. Recovering a robot whose battery ran out takes five minutes of their
+- A simulated person answers one question at a time: about 20 seconds per answer, 10 seconds more within a minute
+  of finishing their previous job (an answer or a recovery), right 97% of the time. Recovering a robot whose battery ran out takes five minutes of their
   time and counts as an interruption.
 
 ### Incidents
@@ -84,8 +84,8 @@ truth directly (through the call stack, for example).
 
 With the default settings, most of the trade-off comes from scan failures: about 20 questions an hour, or about 8
 order lines an hour lost by never asking. Obstacles add a smaller part, and low batteries a small one: with every
-charger taken finishing a task first is sometimes right, but saves only robot idle time, about one
-delivery per right call (see RESULTS.md).
+charger taken finishing a task first is sometimes right, but saves only robot idle time, about 1.5
+deliveries per right call (see RESULTS.md).
 
 Each observation carries the robot's suggested action and confidence. How well that confidence can be trusted differs
 per kind, and finding out is part of the job.
@@ -119,9 +119,8 @@ Run your own as `module:Class`, with `--secret-seeds` for scores you want to com
 - `interrupt/h`: questions plus forced recoveries per hour.
 - `harm/h`: the supervisor's own misses per hour, weighted critical 100, high 10, medium 1, low 0.5. A miss is an
   action other than the right one that led to harm; misses of the person (wrong answers) and of the system are
-  counted apart. A person's answer applied to an incident the supervisor joined to the question is the person's
-  only if it was about the same cause (the same obstacle, say); otherwise any miss it leads to is the supervisor's,
-  which chose to apply an answer about something else. The weights are a profile, not a truth; the per-severity counts are reported too.
+  counted apart. When an incident was joined to a question about a different cause, the miss is the supervisor's.
+  The weights are a profile, not a truth; the per-severity counts are reported too.
 - `delivered/h`: correct deliveries per hour. This is where caution shows its cost.
 - Also reported: how busy the person is, how long questions wait, and order lines dropped for any reason, including
   lines the fleet manager gives up when it sends a robot to another goal (`replanned`). Orders are an endless

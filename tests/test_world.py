@@ -1052,6 +1052,25 @@ def test_a_robot_on_its_way_to_park_takes_a_charger_that_comes_free():
     assert robot.purpose == 'charge' and robot.charger == episode.layout.chargers[0]
 
 
+def test_an_obstacle_on_the_parking_cell_sends_the_robot_to_park_elsewhere_without_asking():
+    # Raising it once brought the robot back to the same cell, and the same question, again and again.
+    episode = Episode(Fixed(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    place(episode, robot, episode.layout.stations[0])
+    episode.reserved_chargers.update({c: 99 for c in episode.layout.chargers})
+    robot.battery = 3.0
+    episode._go_charge(robot)
+    first = robot.goal
+    box = Obstacle(0, first, 'box', 10_000)
+    episode.obstacles[box.id], episode.obstacle_cells[box.cell] = box, box
+    for _ in range(300):
+        episode.tick()
+        if robot.state == 'idle':
+            break
+    assert robot.state == 'idle' and robot.cell != first and robot.cell in episode.parking
+    assert not episode.incidents
+
+
 def test_the_label_leaves_a_free_charger_to_the_robot_already_waiting_for_it():
     episode, charger = taking_turns()
     waiting, robot = episode.robots
@@ -1068,3 +1087,130 @@ def test_a_robot_recovered_in_a_charger_bay_can_charge_there():
     place(episode, robot, charger)
     episode._go_charge(robot)
     assert robot.charger == charger
+
+
+@pytest.mark.parametrize('cls, severity', [('person', 'critical'), ('box', 'medium')])
+def test_driving_into_an_obstacle_is_a_miss_of_its_severity(cls, severity):
+    episode = Episode(Fixed(obstacle='proceed'), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    place(episode, robot, (10, 3))
+    obstacle = Obstacle(0, (11, 3), cls, 10_000)
+    episode.obstacles[0], episode.obstacle_cells[obstacle.cell] = obstacle, obstacle
+    episode._go(robot, (14, 3), 'drop')
+    episode._raise_obstacle(robot, obstacle)
+    episode._decide_new()
+    assert [(m['severity'], m['by']) for m in episode.stats['misses']] == [(severity, 'supervisor')]
+
+
+def started(episode, last_end=None):
+    """Start one question job and return how long the person takes over it."""
+    from fleetattention.world import Job
+    episode.last_answer_end = last_end
+    episode.queue.append(Job('question', 0))
+    episode._start_next()
+    duration, episode.current = episode.current_end - episode.time, None
+    return duration
+
+
+def test_answer_times_follow_the_median_the_switch_penalty_and_the_minimum():
+    episode = Episode(Fixed(), 0, quiet(robots=1, human_spread=0.0))
+    episode.time = 1000
+    cfg = episode.cfg
+    assert started(episode) == cfg.human_median
+    assert started(episode, 1000 - cfg.human_switch_window + 1) == cfg.human_median + cfg.human_switch_penalty
+    assert started(episode, 1000 - cfg.human_switch_window) == cfg.human_median
+    fast = Episode(Fixed(), 0, quiet(robots=1, human_spread=0.0, human_median=0.5))
+    assert started(fast) == fast.cfg.human_min
+
+
+def test_a_wrong_answer_is_never_the_right_action_and_waits_are_counted():
+    episode = Episode(AlwaysAsk(), 0, quiet(robots=6, hours=.25, human_accuracy=0.0), record=True)
+    pairs, answer = [], episode._answer
+
+    def recorded(question):
+        correct = episode.incidents[question.incidents[0]].correct
+        answer(question)
+        pairs.append((next(e for e in reversed(episode.events) if e['type'] == 'answer'), correct))
+    episode._answer = recorded
+    episode.run()
+    said = [(e['action'], correct) for e, correct in pairs]
+    assert said and all(action != correct for action, correct in said)
+    assert episode.stats['answer_latency'] >= episode.cfg.human_min * episode.stats['answered'] > 0
+
+
+def test_motion_comes_from_the_true_class_and_confidence_from_being_right():
+    episode = Episode(Fixed(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    seen = {'person': [], 'ghost': []}
+    right, wrong = [], []
+    for i in range(600):
+        cls = 'person' if i % 2 else 'ghost'
+        robot.attempts, robot.state = {}, 'idle'
+        episode._raise_obstacle(robot, Obstacle(i, (11, 3), cls, 10_000))
+        obs = episode.incidents[len(episode.incidents) - 1].obs
+        if obs.details['predicted'] != cls:  # misclassified: motion must still follow what is really there
+            seen[cls].append(obs.details['motion'])
+        (right if obs.details['predicted'] == cls else wrong).append(obs.confidence)
+    rate = lambda xs: sum(xs) / len(xs)
+    assert len(seen['person']) > 30 and len(seen['ghost']) > 30
+    assert rate(seen['person']) > rate(seen['ghost']) + .3
+    assert sum(right) / len(right) > sum(wrong) / len(wrong) + .1
+
+
+def test_a_damaged_label_stays_damaged_over_rescans():
+    episode = Episode(Fixed(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    for task in range(30):
+        robot.tasks = task
+        labels = set()
+        for attempt in (1, 2, 3):
+            episode._raise_scan(robot, attempt)
+            labels.add(episode.incidents[len(episode.incidents) - 1].data['unreadable'])
+        assert len(labels) == 1
+
+
+def test_a_wait_ended_by_the_obstacle_expiring_gives_no_verdict():
+    sup = Fixed(obstacle='wait')
+    episode = Episode(sup, 0, quiet(robots=1, wait_timeout=10_000))
+    robot = episode.robots[0]
+    place(episode, robot, (10, 3))
+    obstacle = Obstacle(0, (11, 3), 'box', 30)
+    episode.obstacles[0], episode.obstacle_cells[obstacle.cell] = obstacle, obstacle
+    episode._go(robot, (14, 3), 'drop')
+    while not sup.outcomes and episode.time < 200:
+        episode.tick()
+    assert [o.ok for _, o in sup.outcomes] == [None]
+
+
+def test_a_joined_incident_about_another_obstacle_in_the_same_cell_is_not_the_persons():
+    class AskThenJoin(Supervisor):
+        name = 'ask_then_join'
+
+        def decide(self, obs, ctx):
+            return Decision.join(ctx.pending[0].id) if ctx.pending else Decision.ask()
+
+    class Wrong:
+        def random(self):
+            return 1.0
+
+        def choice(self, options):
+            return 'proceed'
+
+    episode = Episode(AskThenJoin(), 0, quiet(robots=2))
+    first, second = episode.robots
+    cell = (11, 3)
+    for robot, start, goal, oid in ((first, (10, 3), (14, 3), 0), (second, (12, 3), (8, 3), 1)):
+        box = Obstacle(oid, cell, 'box', 10_000)
+        episode.obstacles.pop(oid - 1, None)
+        episode.obstacles[oid], episode.obstacle_cells[cell] = box, box
+        place(episode, robot, start)
+        episode._go(robot, goal, 'drop')
+        episode._raise_obstacle(robot, box)
+        episode._decide_new()
+    question = episode.questions.pop(0)
+    assert len(question.incidents) == 2
+    episode.rng['human'] = Wrong()
+    episode._answer(question)
+    # The asked-about box is gone, so proceeding past it harms nothing; driving into the second box is the
+    # supervisor's miss, not the person's: their answer was about another obstacle in that cell.
+    assert [m['by'] for m in episode.stats['misses']] == ['supervisor']
