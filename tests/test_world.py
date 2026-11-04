@@ -493,9 +493,9 @@ def test_extreme_but_legal_settings_run(overrides):
 
 
 GOLDEN = {  # seed 0, half an hour: (questions, recoveries, delivered/h, supervisor low misses, incidents)
-    'cost_aware': (18, 0, 1026.0, 6, 70),
-    'always_safe_reroute': (0, 0, 1016.0, 12, 88),
-    'reference': (40, 0, 962.0, 0, 62),
+    'cost_aware': (17, 1, 988.0, 0, 68),
+    'always_safe_reroute': (0, 0, 990.0, 5, 89),
+    'reference': (41, 0, 938.0, 0, 63),
 }
 
 
@@ -748,17 +748,30 @@ def test_a_detour_around_a_robot_that_stays_put_is_not_cut_short():
     assert not episode.stats['replanned']
 
 
-@pytest.mark.parametrize('enough', [True, False])
-def test_charging_first_is_a_low_miss_only_when_the_battery_would_have_lasted(enough):
+def test_charging_first_is_never_a_miss():
     episode = Episode(Fixed(low_battery='charge_now'), 0, quiet(robots=1))
     robot = episode.robots[0]
     robot.battery = 8.0
     episode._assign(robot)
-    episode.incidents[0].correct = 'finish_task' if enough else 'charge_now'
+    episode.incidents[0].correct = 'finish_task'
     episode._decide_new()
-    assert episode.stats['abandoned'] == 1
-    assert [(m['severity'], m['by']) for m in episode.stats['misses']] == ([('low', 'supervisor')] if enough else [])
+    assert episode.stats['abandoned'] == 1 and not episode.stats['misses'] and robot.purpose == 'charge'
 
+
+def test_every_charging_session_starts_with_docking():
+    episode = Episode(NeverAsk(), 0, quiet(robots=1))
+    robot = episode.robots[0]
+    robot.battery = 99.0
+    place(episode, robot, episode.layout.chargers[0])
+    episode._go(robot, robot.cell, 'charge')
+    episode.tick()
+    assert robot.state == 'charging'
+    for _ in range(episode.cfg.docking_time - 1):
+        episode.tick()
+    assert robot.battery == 99.0
+    for _ in range(3):
+        episode.tick()
+    assert robot.battery == 100.0 and robot.state != 'charging'
 
 def test_a_question_about_an_obstacle_that_has_gone_is_taken_back():
     episode = Episode(Fixed(), 0, quiet(robots=2, human_median=10_000, human_spread=0))

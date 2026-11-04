@@ -70,6 +70,9 @@ class Config:
     battery_margin: float = 1.25
     """`finish_task` counts as right when the battery covers the planned route at the true drain times this."""
     charge_rate: float = .5
+    docking_time: int = 60
+    """Seconds of every charging session spent docking and undocking, whatever the battery: charging more often than
+    needed costs robot time."""
     human_accuracy: float = .97
     human_median: float = 20.0
     """Median seconds for the person to answer a question; answer times are log-normal."""
@@ -511,7 +514,7 @@ class Episode:
             self._assign(robot)
         elif state == 'moving':
             self._move(robot)
-        elif state == 'charging':
+        elif state == 'charging' and self.time >= robot.timer:
             robot.battery = min(100.0, robot.battery + self.cfg.charge_rate)
             if robot.battery >= 100:
                 robot.low_raised = robot.must_charge = False
@@ -777,7 +780,7 @@ class Episode:
         elif robot.purpose == 'drop':
             robot.state, robot.timer, robot.on_timer = 'working', self.time + self.cfg.drop_time, 'dropped'
         else:
-            robot.state = 'charging'
+            robot.state, robot.timer = 'charging', self.time + self.cfg.docking_time
             if robot.finish_incident is not None:
                 self._close(self.incidents[robot.finish_incident], True)
                 robot.finish_incident = None
@@ -1014,10 +1017,7 @@ class Episode:
                 robot.incident, robot.must_charge = None, True
                 self._go(robot, robot.pick, 'pick')
             else:
-                # Charging first gives the order line up: needlessly when the battery would have lasted.
-                wrong = incident.correct != 'charge_now'
-                if wrong:
-                    self._miss('low', by, incident)
+                # Charging first is never a miss: what it costs is robot time, an extra docking and the trip.
                 self._close(incident, None)
                 self._abandon_task(robot)
                 self._go_charge(robot)
